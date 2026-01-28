@@ -125,15 +125,29 @@ See [docs/scaffold.md](docs/scaffold.md) for the complete folder structure and [
 
 ## 📚 Documentation
 
-- **[Master Architecture](docs/CERBERUS_MASTER_ARCH.md)**: Complete system design and philosophy
-- **[Scaffold Guide](docs/scaffold.md)**: Folder structure and project organization
-- **[HAProxy Layer](docs/haproxy.md)**: Connection management and circuit tracking
-- **[Nginx Layer](docs/nginx.md)**: Protocol sanitization and static delivery
-- **[Fortify Layer](docs/fortify.md)**: Rust application logic and CAPTCHA system
-- **[Virtual Queue System](docs/virtual-queue-system.md)**: Browser-side waiting room with PoW priority
-- **[Dependencies Audit](docs/dependencies.md)**: Version matrix and compatibility
-- **[CI/CD Workflows](docs/ci-cd-workflows.md)**: Automated checks and code review standards
-- **[Instructions](docs/instructions.md)**: Security gotchas, Tor best practices, and development workflow
+**Core Documentation:**
+- **[Master Architecture](docs/0000-master-architecture.md)**: Complete system design and philosophy
+- **[Project Scaffold](docs/0001-project-scaffold.md)**: Folder structure and project organization
+- **[Instructions](docs/0002-instructions.md)**: Security gotchas, Tor best practices, roles, user stories, and development workflow
+
+**Defense Layers (0100-series):**
+- **[HAProxy Layer](docs/0100-layer1-haproxy.md)**: Connection management and circuit tracking
+- **[Nginx Layer](docs/0101-layer2-nginx.md)**: Protocol sanitization and static delivery
+- **[Fortify Layer](docs/0102-layer3-fortify.md)**: Rust application logic and CAPTCHA system
+
+**Defense Features (0200-series):**
+- **[Virtual Queue System](docs/0200-feature-virtual-queue.md)**: Browser-side waiting room with PoW priority
+- **[Threat Dial System](docs/0201-feature-threat-dial.md)**: Dynamic defense intensity control
+- **[XMR Priority System](docs/0202-feature-xmr-priority.md)**: Monero payment-based queue fast-pass
+
+**Operations (0300-series):**
+- **[Monitoring & UI](docs/0300-operations-monitoring-ui.md)**: Grafana dashboards, admin panel, metrics
+- **[Vanity Onion Generation](docs/0301-operations-vanity-onion.md)**: mkp224o integration for branded addresses
+
+**Infrastructure (0400-series):**
+- **[Dependencies Audit](docs/0400-infra-dependencies.md)**: Version matrix and compatibility
+- **[CI/CD Workflows](docs/0401-infra-ci-cd.md)**: Automated checks and code review standards
+- **[Development Environment](docs/0402-infra-dev-environment.md)**: Cross-platform development setup (Windows + Ubuntu VM)
 
 ---
 
