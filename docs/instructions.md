@@ -11,11 +11,12 @@ This document serves as a comprehensive guide for developing and maintaining Cer
 3. [JavaScript: The Double-Edged Sword](#javascript-the-double-edged-sword)
 4. [Onion Service Specific Concerns](#onion-service-specific-concerns)
 5. [Project Roles & Responsibilities](#project-roles--responsibilities)
-6. [Development Workflow & Best Practices](#development-workflow--best-practices)
-7. [Testing in Tor Environments](#testing-in-tor-environments)
-8. [Security Audit Checklist](#security-audit-checklist)
-9. [Common Pitfalls & Mistakes](#common-pitfalls--mistakes)
-10. [Defensive Programming Principles](#defensive-programming-principles)
+6. [User Stories](#user-stories)
+7. [Development Workflow & Best Practices](#development-workflow--best-practices)
+8. [Testing in Tor Environments](#testing-in-tor-environments)
+9. [Security Audit Checklist](#security-audit-checklist)
+10. [Common Pitfalls & Mistakes](#common-pitfalls--mistakes)
+11. [Defensive Programming Principles](#defensive-programming-principles)
 
 ---
 
@@ -438,6 +439,7 @@ To maintain clarity and ensure comprehensive project execution, Cerberus develop
 
 **Key Duties**:
 - Create comprehensive planning documents for new features and architectural changes
+- **Reference user stories to understand user needs and perspectives** (see [User Stories](#user-stories))
 - Research and evaluate potential alternatives and competing approaches
 - Master understanding of all aspects of the Cerberus project (architecture, security, performance, deployment)
 - Act as project guardian: ensure all plans are safe, worthwhile, and aligned with project goals
@@ -452,6 +454,7 @@ To maintain clarity and ensure comprehensive project execution, Cerberus develop
 - Security and performance impact analyses
 
 **Quality Standards**:
+- **Must align with relevant user stories** (which users benefit, how does it serve their needs)
 - All plans must include security considerations
 - Must identify risks and provide mitigation strategies
 - Should include implementation complexity estimates
@@ -584,6 +587,304 @@ To maintain clarity and ensure comprehensive project execution, Cerberus develop
 - ❌ Librarian does NOT design features (documents what exists, not what could be)
 
 **Exception**: Small changes (typo fixes, minor doc updates) may skip formal role workflow.
+
+---
+
+## User Stories
+
+User stories capture the "who, what, and why" of features from different perspectives. They guide decision-making throughout planning, implementation, and documentation phases. All roles should reference these stories to maintain user-centric focus.
+
+### Story Format
+
+```
+As a [role/persona]
+I want [goal/desire]
+So that [benefit/value]
+
+Acceptance Criteria:
+- [Testable condition 1]
+- [Testable condition 2]
+- [Testable condition 3]
+```
+
+### Core User Personas
+
+**1. Service Operator** - Runs the onion service, manages Cerberus deployment  
+**2. End User** - Legitimate visitor accessing the protected service via Tor Browser  
+**3. Admin/Monitor** - Security team member monitoring attacks and managing defenses  
+**4. Attacker** - Adversary attempting DDoS or deanonymization (understand to defend)  
+**5. Developer** - Future contributor implementing features or fixing bugs
+
+---
+
+### User Stories: Service Operator
+
+**Story 1.1: Quick Deployment**
+```
+As a service operator
+I want to deploy Cerberus with a single command
+So that I can protect my onion service without manual configuration
+
+Acceptance Criteria:
+- `./cerberus.sh deploy` installs all dependencies
+- Automatically detects backend onion service address
+- Generates default configs for HAProxy, Nginx, Tor, Fortify
+- Completes deployment in under 5 minutes on Ubuntu 24.04
+- Provides clear error messages if dependencies missing
+```
+
+**Story 1.2: Attack Response**
+```
+As a service operator under DDoS attack
+I want to adjust defense intensity without restarting services
+So that I can stop the attack without downtime or dropped connections
+
+Acceptance Criteria:
+- Threat dial adjusts defenses within 5 seconds
+- No service restarts required (HAProxy/Nginx/Fortify hot reload)
+- Audit log records all dial changes with timestamp and reason
+- Can dial back down when attack subsides
+- Real-time metrics show immediate impact of dial changes
+```
+
+**Story 1.3: Resource Constraints**
+```
+As a service operator on a low-resource VPS (2GB RAM, 2 CPU)
+I want Cerberus to perform efficiently under load
+So that I don't need expensive hardware to defend my service
+
+Acceptance Criteria:
+- All services (HAProxy, Nginx, Tor, Fortify) use <500MB RAM combined
+- Can handle 1,000 concurrent connections on 2 CPU cores
+- Graceful degradation under overload (queue, not crash)
+- Memory leaks detected and prevented during load testing
+```
+
+**Story 1.4: Monitoring Visibility**
+```
+As a service operator
+I want to see real-time metrics of attacks and defense effectiveness
+So that I know when attacks are happening and if my defenses are working
+
+Acceptance Criteria:
+- Dashboard shows live session counts (VIP/PoW/Normal/Banned/Queue)
+- Attack events logged with timestamps and severity
+- Metrics update every 2-5 seconds (near real-time)
+- Accessible via Tor Onion Service (no clearnet exposure)
+- Mobile-friendly UI for Tor Browser on phone
+```
+
+---
+
+### User Stories: End User (Legitimate Visitor)
+
+**Story 2.1: Accessibility Without JavaScript**
+```
+As an end user with Tor Browser in Safest mode (JavaScript disabled)
+I want to access the protected service
+So that I maintain maximum privacy while browsing
+
+Acceptance Criteria:
+- CAPTCHA displays correctly without JavaScript
+- Form submission works with standard HTTP POST
+- No JavaScript required for any core functionality
+- Graceful fallback if JS disabled mid-session
+```
+
+**Story 2.2: Mobile Access**
+```
+As an end user on Tor Browser mobile (Android/iOS)
+I want to solve CAPTCHAs quickly without battery drain
+So that I can access the service on-the-go
+
+Acceptance Criteria:
+- CAPTCHA images load in under 3 seconds
+- No PoW challenges that drain battery (optional PoW for fast-pass only)
+- Touch-friendly interface (large tap targets, no hover states)
+- Form inputs work with mobile keyboards
+```
+
+**Story 2.3: Fair Queue Experience**
+```
+As an end user waiting in the virtual queue
+I want to see my estimated wait time and position
+So that I know whether to wait or come back later
+
+Acceptance Criteria:
+- Queue page displays position number and estimated time
+- Auto-refreshes every 10 seconds (meta-refresh, no JS)
+- Option to pay XMR to skip queue (if enabled)
+- Option to solve PoW for priority (if available)
+```
+
+**Story 2.4: Session Persistence**
+```
+As an end user who solved a CAPTCHA
+I want my session to last at least 10 minutes
+So that I'm not repeatedly challenged while browsing
+
+Acceptance Criteria:
+- VIP token valid for 10-30 minutes (configurable)
+- Graceful re-authentication when token expires (redirect to CAPTCHA, not error)
+- Token survives circuit rotation (tied to circuit reputation, not single circuit ID)
+```
+
+---
+
+### User Stories: Admin/Monitor
+
+**Story 3.1: Manual Intervention**
+```
+As an admin monitoring an active attack
+I want to manually promote, demote, or ban specific circuits
+So that I can respond to sophisticated attacks that bypass automated defenses
+
+Acceptance Criteria:
+- Admin panel shows top circuits by request rate
+- One-click promote/demote/ban with reason field
+- Changes apply within 5 seconds via HAProxy Runtime API
+- All actions logged in audit trail with admin username
+- TOTP 2FA required for ban/promote actions
+```
+
+**Story 3.2: Historical Analysis**
+```
+As an admin investigating a past attack
+I want to view snapshots of traffic and defense metrics
+So that I can understand attack patterns and improve defenses
+
+Acceptance Criteria:
+- Snapshot reports available for 5m, 15m, 30m, 1h, 4h, 24h, 7d, 30d, 90d, 365d
+- Shows new circuits, bans, CAPTCHA success rate, attack events
+- Can export data as CSV for external analysis
+- Grafana dashboards with drill-down capability
+```
+
+**Story 3.3: Alert Notifications**
+```
+As an admin managing multiple services
+I want to receive alerts when attacks are detected
+So that I can respond quickly without constant monitoring
+
+Acceptance Criteria:
+- Alerts sent via Tor (Matrix bot, Telegram via SOCKS)
+- Configurable thresholds (circuit flood > 500/min, CPU > 90%, etc.)
+- Alert includes severity, metric value, and suggested action
+- Can acknowledge alerts to suppress duplicate notifications
+```
+
+---
+
+### User Stories: Developer
+
+**Story 4.1: Local Development**
+```
+As a developer working on Windows
+I want to develop Rust code locally and test on Ubuntu VM
+So that I can contribute without running Linux as primary OS
+
+Acceptance Criteria:
+- VS Code Remote-SSH connects to Ubuntu VM
+- Rust-analyzer works correctly for Linux target
+- Unit tests run on both Windows and Ubuntu
+- Clear documentation for cross-platform workflow
+```
+
+**Story 4.2: Contribution Clarity**
+```
+As a new contributor
+I want to understand the codebase architecture quickly
+So that I can implement features without breaking existing functionality
+
+Acceptance Criteria:
+- README explains three-layer architecture (HAProxy/Nginx/Fortify)
+- Each component has its own docs/ guide
+- Code comments explain complex logic (circuit tracking, stick tables)
+- Example config files with inline documentation
+```
+
+**Story 4.3: Testing Confidence**
+```
+As a developer implementing a new feature
+I want comprehensive tests to verify correctness
+So that I don't accidentally break production deployments
+
+Acceptance Criteria:
+- Unit tests for Rust code (cargo test)
+- Integration tests for full stack (Tor → HAProxy → Nginx → Fortify)
+- Load tests simulate DDoS scenarios
+- All tests pass in CI/CD before merge
+```
+
+---
+
+### User Stories: Understanding the Attacker
+
+**Story 5.1: Economic Sybil Attack**
+```
+As an attacker with $100 budget
+I want to bypass defenses by creating many circuits
+So that I can overwhelm the service
+
+Defense Requirements:
+- Circuit-based rate limiting prevents single-IP flooding
+- Virtual queue prevents resource exhaustion (queue waits on client, not server)
+- PoW/XMR payment raises economic cost (free → $0.03 per circuit)
+- Ban duration (30 min) makes circuit rotation expensive (need fresh Tor circuits)
+```
+
+**Story 5.2: CAPTCHA Bypass**
+```
+As an attacker with OCR tools
+I want to solve CAPTCHAs automatically
+So that I can maintain my botnet connections
+
+Defense Requirements:
+- Adaptive CAPTCHA difficulty (increase complexity under attack)
+- Constant-time validation (prevent timing attacks)
+- Retry limits (3 failures = ban)
+- CAPTCHA expiry (5 min TTL, can't pre-solve)
+```
+
+**Story 5.3: Deanonymization Attempt**
+```
+As an attacker
+I want to correlate multiple circuits to the same user
+So that I can deanonymize service operators or users
+
+Defense Requirements:
+- No fingerprinting vectors in responses (header scrubbing)
+- Constant-time operations (prevent timing correlation)
+- No IP logging (circuit IDs only, time-limited)
+- Minimal metadata storage (no user-agent, language, timezone)
+```
+
+---
+
+### How to Use User Stories
+
+**For Planners (🎯):**
+1. **Before planning a feature**, review relevant user stories
+2. Ask: "Which persona does this serve? How does it help them?"
+3. If no story exists for the feature, consider if it's truly needed
+4. **Include story references in planning docs**: "This addresses Story 1.2 (Attack Response)"
+5. Ensure acceptance criteria from stories are covered in feasibility analysis
+
+**For Coaches (📋):**
+1. **Sprint tasks should map to acceptance criteria** from user stories
+2. Testing strategy must verify story acceptance criteria
+3. If implementation deviates from story, update the story (don't ignore mismatch)
+
+**For Librarians (📚):**
+1. **Verify completed features satisfy user stories**
+2. Update stories if user needs changed during implementation
+3. Mark stories as "Implemented" in documentation
+4. Create new stories based on user feedback or discovered edge cases
+
+**For All Roles:**
+- User stories are **living documents** (update as understanding improves)
+- When ambiguous decisions arise, refer to stories for guidance
+- New features should add new stories (don't implement without user need)
 
 ---
 
