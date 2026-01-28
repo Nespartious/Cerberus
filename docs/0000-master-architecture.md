@@ -1,4 +1,21 @@
 Project Cerberus: High-Assurance Tor Ingress Architecture
+
+## 📖 User Story
+
+```
+As a new contributor
+I want to understand Cerberus' three-layer defense architecture and design philosophy
+So that I can make informed decisions that align with the project's goals
+
+Acceptance Criteria:
+- Explains why three layers (HAProxy/Nginx/Fortify) vs single WAF
+- Documents circuit-based tracking vs IP-based approach
+- Clarifies zero-JavaScript requirement and Tor-specific constraints
+- Provides rationale for technology choices (Rust, HAProxy 2.8, etc.)
+```
+
+---
+
 1. Executive Summary
 Cerberus is a specialized, multi-tiered ingress defense system designed exclusively for Tor Onion Services. Unlike standard web stacks, Cerberus assumes a hostile environment (DDoS, Deanonymization, Floods) by default. It utilizes a "Defense in Depth" strategy, separating connection management (L4) from protocol sanitization (L7) and business logic.
 

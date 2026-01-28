@@ -1,7 +1,20 @@
 # Vanity Onion Address Generation with mkp224o
 
 **Integration of mkp224o for Automated Vanity .onion Address Creation**
+## 📖 User Story
 
+```
+As a service operator wanting brand recognition
+I want to generate a vanity onion address matching my backend service
+So that users can easily identify and remember my legitimate address
+
+Acceptance Criteria:
+- Automatically attempts to match first 6 chars of backend address
+- Configurable prefix and timeout (default 5 min, max 128 hours)
+- User approval prompt before generation starts
+- Fallback to random address if timeout reached
+- Integrates with deployment script (cerberus.sh)
+```
 ---
 
 ## 📋 Overview

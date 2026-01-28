@@ -1,7 +1,20 @@
 # Monitoring and Management UI
 
 **Operational Visibility and Control for Headless Cerberus Deployments**
+## 📖 User Story
 
+```
+As a service operator managing a headless deployment
+I want to see real-time metrics and manually intervene during attacks
+So that I can monitor system health and respond to sophisticated threats
+
+Acceptance Criteria:
+- Grafana dashboards accessible via Tor Onion Service
+- Live session counts with color-coded statuses (VIP/PoW/Normal/Banned)
+- Historical snapshots (5m, 15m, 1h, 24h, 7d, 30d, 90d, 365d)
+- Admin panel for manual actions (promote/demote/ban circuits)
+- Custom TUI for emergency SSH access when web UI unavailable
+```
 ---
 
 ## 📋 Overview

@@ -1,5 +1,24 @@
 # Virtual Queue System with Proof-of-Work Priority
 
+## 📖 User Story
+
+```
+As an end user during high traffic
+I want to immediately see a queue page that explains I'm waiting
+So that I know the site is working and don't assume it's down or broken
+
+Acceptance Criteria:
+- Queue page loads instantly (within 1-2 seconds), not after timeouts
+- Clear messaging: "You are in queue, position #234, ~12 min wait"
+- Browser-side waiting room using meta-refresh (no JavaScript)
+- Token-based priority system (age-weighted, prevents replay)
+- Three lanes: VIP/PoW/Normal with skip options displayed
+- Server offloads queue burden to client (no memory exhaustion)
+- HMAC-signed tokens prevent queue jumping
+```
+
+---
+
 ## Overview
 Cerberus's queue system offloads connection management from the server to the client's browser using a **Virtual Waiting Room**. This approach prevents malicious actors from exhausting server resources while providing fair access for legitimate users during high-load scenarios.
 

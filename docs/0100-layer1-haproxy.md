@@ -1,5 +1,22 @@
 # HAProxy - Layer 1: The Shield
 
+## 📖 User Story
+
+```
+As a service operator under DDoS attack
+I want HAProxy to track and rate-limit malicious circuits before they reach my application
+So that my backend service stays responsive for legitimate users
+
+Acceptance Criteria:
+- Circuit ID extracted from Tor PROXY protocol
+- Stick tables track per-circuit connection rates and reputation
+- Automatic banning of circuits exceeding thresholds
+- HAProxy Runtime API allows Fortify to promote/ban circuits dynamically
+- Graceful handling of 10,000+ concurrent connections
+```
+
+---
+
 ## Overview
 HAProxy serves as Cerberus's first line of defense after Tor. It operates at both Layer 4 (TCP) and Layer 7 (HTTP), providing connection management, circuit tracking, and aggressive DDoS mitigation. HAProxy receives raw TCP connections with Tor Circuit IDs and makes real-time decisions about whether to queue, rate-limit, or drop connections.
 

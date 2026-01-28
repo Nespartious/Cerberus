@@ -1,7 +1,20 @@
 # XMR Payment-Based Priority System
 
 **Economic Proof-of-Work: Monero Payments for Queue Fast-Pass**
+## 📖 User Story
 
+```
+As a legitimate user with urgent access needs
+I want to pay a small XMR fee to skip the queue
+So that I can access the service immediately without waiting
+
+Acceptance Criteria:
+- Payment of 0.0002 XMR (~$0.03 USD) grants VIP access
+- Transaction verified against Monero blockchain
+- 0 confirmations = gentle access, 1+ confirmations = full VIP
+- VIP status lasts 24 hours after confirmation
+- Subaddress rotation prevents payment correlation
+```
 ---
 
 ## 📋 Concept Overview

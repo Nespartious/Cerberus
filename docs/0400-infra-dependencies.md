@@ -1,5 +1,22 @@
 # Dependencies Audit & Version Matrix
 
+## 📖 User Story
+
+```
+As a developer setting up a deployment environment
+I want to know exact versions of all dependencies and their compatibility
+So that I avoid version conflicts and security vulnerabilities
+
+Acceptance Criteria:
+- Complete version matrix for Tor, HAProxy, Nginx, Rust, and all crates
+- Compatibility notes for Ubuntu 22.04/24.04 and Debian 11/12
+- Security update schedule and EOL dates documented
+- Installation commands with version pinning
+- Known breaking changes between major versions noted
+```
+
+---
+
 ## Document Purpose
 This document tracks all dependencies required for Cerberus deployment, their recommended versions, compatibility notes, and future considerations. We prioritize **latest stable** releases unless newer versions offer groundbreaking features critical to Tor defense.
 

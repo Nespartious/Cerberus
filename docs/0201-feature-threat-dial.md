@@ -1,7 +1,20 @@
 # Threat Dial: Dynamic Defense Intensity Control
 
 **Adaptive Defense Multiplier System for Real-Time Attack Response**
+## 📖 User Story
 
+```
+As a service operator responding to an evolving attack
+I want to adjust defense intensity gradually without service restarts
+So that I can stop attacks without accidentally blocking legitimate users
+
+Acceptance Criteria:
+- Single dial control (-10 to +10) adjusts all thresholds
+- Changes apply within 5 seconds via hot reload
+- Dial +5 reduces limits by ~50%, +10 by ~90%
+- All changes logged with admin username and reason
+- Auto-dial mode available with safety limits
+```
 ---
 
 ## 📋 Concept Overview

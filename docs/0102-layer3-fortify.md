@@ -1,5 +1,22 @@
 # Fortify - Layer 3: The Keeper (Rust Application)
 
+## 📖 User Story
+
+```
+As a developer implementing new defense logic
+I want a documented Rust application architecture with clear APIs
+So that I can add features without breaking existing circuit reputation or CAPTCHA systems
+
+Acceptance Criteria:
+- CAPTCHA generation/validation API documented
+- HAProxy stick table integration via Unix socket explained
+- Circuit reputation database schema (SQLite) documented
+- Axum route handlers with example code
+- Configuration management patterns shown
+```
+
+---
+
 ## Overview
 Fortify is the brain of Cerberus, a Rust-based application layer that handles all dynamic logic, CAPTCHA generation/verification, circuit reputation management, and threat analysis. Unlike HAProxy (connection management) and Nginx (protocol sanitization), Fortify makes intelligent decisions about user behavior, generates challenges, and updates the defense posture in real-time.
 

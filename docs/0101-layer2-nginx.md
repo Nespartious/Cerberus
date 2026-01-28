@@ -1,5 +1,22 @@
 # Nginx - Layer 2: The Filter
 
+## 📖 User Story
+
+```
+As an end user with JavaScript disabled (Tor Browser Safest mode)
+I want to access the CAPTCHA gate and protected service
+So that I maintain maximum privacy without compromising functionality
+
+Acceptance Criteria:
+- Static CAPTCHA HTML served without JavaScript
+- Header scrubbing removes fingerprinting vectors
+- CSP headers prevent XSS and data exfiltration
+- Buffer limits prevent slowloris attacks
+- Forwards Circuit ID to Fortify for verification
+```
+
+---
+
 ## Overview
 Nginx serves as Cerberus's second line of defense, operating at Layer 7 (HTTP). It receives pre-filtered traffic from HAProxy and performs protocol sanitization, buffer management, static content delivery, and request routing. Nginx is the guardian between the raw internet and your application logic, ensuring only clean, well-formed HTTP requests reach Fortify.
 

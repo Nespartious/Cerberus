@@ -1,7 +1,20 @@
 # Development Environment Setup
 
 **Cross-Platform Development: Windows Host → Ubuntu VM Deployment**
+## 📖 User Story
 
+```
+As a developer working on Windows
+I want to develop code locally but test on Ubuntu VM
+So that I can contribute effectively without running Linux as my primary OS
+
+Acceptance Criteria:
+- VS Code Remote-SSH setup documented with step-by-step guide
+- Cross-platform file sync options explained (Git, rsync, shared folders)
+- Troubleshooting for common issues (line endings, permissions, compilation)
+- Clear explanation of what works on Windows vs requires Ubuntu
+- Alternative approaches documented (WSL2, Docker)
+```
 ---
 
 ## 📋 Overview

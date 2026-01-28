@@ -1,5 +1,22 @@
 # CI/CD Workflows & Code Review Standards
 
+## 📖 User Story
+
+```
+As a developer submitting a pull request
+I want automated checks to catch security issues and bugs before merge
+So that I maintain code quality and don't introduce vulnerabilities
+
+Acceptance Criteria:
+- cargo-audit checks for vulnerable dependencies
+- gitleaks scans for accidentally committed secrets
+- clippy enforces Rust linting standards
+- All unit and integration tests must pass
+- Breaking changes detection for config file modifications
+```
+
+---
+
 ## Overview
 This document defines the automated checks, testing requirements, and code review standards for Cerberus. All pull requests must pass these checks before merging to maintain security, stability, and code quality.
 

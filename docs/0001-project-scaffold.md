@@ -1,5 +1,21 @@
 # Cerberus Project - Folder Structure Scaffold
 
+## 📖 User Story
+
+```
+As a developer implementing a new feature
+I want to know where files should be placed in the project structure
+So that the codebase remains organized and maintainable
+
+Acceptance Criteria:
+- Clear directory structure with explanations
+- Separation of concerns (scripts/, config/, keeper/, static/)
+- Security-first organization (runtime/ not in git, keys/ excluded)
+- Examples of where to place new configs, scripts, or code modules
+```
+
+---
+
 ## Overview
 This document outlines the complete folder structure for the Cerberus high-assurance Tor ingress system. The structure is organized to support development, deployment, configuration management, and operational security.
 

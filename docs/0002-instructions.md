@@ -1,5 +1,21 @@
 # Cerberus Development & Security Instructions
 
+## 📖 User Story
+
+```
+As an AI agent or developer
+I want comprehensive security guidelines and Tor-specific gotchas
+So that I avoid common pitfalls that could compromise user anonymity or security
+
+Acceptance Criteria:
+- Documents 25+ Tor/security gotchas with code examples
+- Explains timing attacks, circuit correlation, JavaScript risks
+- Provides defensive programming patterns (constant-time comparisons)
+- Includes role definitions and user stories for guidance
+```
+
+---
+
 ## Document Purpose
 This document serves as a comprehensive guide for developing and maintaining Cerberus, a high-assurance Tor Onion Service defense system. It contains critical security considerations, Tor-specific gotchas, and development workflow best practices. This content will inform future AI agent instructions and human developer onboarding.
 
