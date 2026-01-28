@@ -26,21 +26,22 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [CAPTCHA Variants](#captcha-variants)
-3. [Anti-Bypass Mechanisms](#anti-bypass-mechanisms)
-4. [Multiple-Choice Text CAPTCHAs](#multiple-choice-text-captchas)
-5. [Generation Pipeline](#generation-pipeline)
-6. [Validation & Session Management](#validation--session-management)
-7. [Threat Dial Integration](#threat-dial-integration)
-8. [Performance Requirements](#performance-requirements)
-9. [Security Considerations](#security-considerations)
-10. [Implementation Phases](#implementation-phases)
+2. [Human-Cost Asymmetry Design Philosophy](#human-cost-asymmetry-design-philosophy)
+3. [CAPTCHA Variants](#captcha-variants)
+4. [Anti-Bypass Mechanisms](#anti-bypass-mechanisms)
+5. [Multiple-Choice Text CAPTCHAs](#multiple-choice-text-captchas)
+6. [Generation Pipeline](#generation-pipeline)
+7. [Validation & Session Management](#validation--session-management)
+8. [Threat Dial Integration](#threat-dial-integration)
+9. [Performance Requirements](#performance-requirements)
+10. [Security Considerations](#security-considerations)
+11. [Implementation Phases](#implementation-phases)
 
 ---
 
 ## Overview
 
-The Advanced CAPTCHA System provides **AI-resistant, human-solvable challenges** that work without JavaScript. Unlike traditional CAPTCHAs that rely on single techniques (distorted text only), this system combines **4 distinct variants** with adaptive difficulty to stay ahead of automated solvers.
+The Advanced CAPTCHA System provides **AI-resistant, human-solvable challenges** that work without JavaScript. Unlike traditional CAPTCHAs that rely on single techniques (distorted text only), this system combines **6 distinct variants** with adaptive difficulty to stay ahead of automated solvers.
 
 ### Design Goals
 
@@ -57,6 +58,233 @@ The Advanced CAPTCHA System provides **AI-resistant, human-solvable challenges**
 - **CAPTCHA Farms**: Paid services solve CAPTCHAs for $1-3 per 1000 challenges
 - **Pattern Detection**: Bots learn CAPTCHA structure and adapt over time
 - **User Friction**: Too difficult = legitimate users abandon session
+
+---
+
+## Human-Cost Asymmetry Design Philosophy
+
+### The Golden Rule
+
+**Make the cost of being wrong trivial for humans and expensive for bots.**
+
+This is the fundamental design principle underlying all Cerberus defenses. Every challenge, every CAPTCHA, every rate limit is designed to:
+
+- **For humans:** Gentle nudges, soft warnings, quick recovery
+- **For bots:** Exponential costs, stateful penalties, compounding friction
+
+### Core Principles
+
+#### 1. Soft-Lock Escalation (Not Hard Blocks)
+
+**Humans see nothing. Bots drown.**
+
+```
+Legitimate User Journey:
+  Request 1: Instant access (no CAPTCHA)
+  Request 2: Instant access
+  Request 3: Instant access
+  ...
+  Request 100: Still instant (VIP status earned)
+
+Bot Journey:
+  Request 1: Instant access (honeypot)
+  Request 2: Easy CAPTCHA (2 seconds to solve)
+  Request 3: Medium CAPTCHA (5 seconds to solve)
+  Request 4: Hard CAPTCHA (10 seconds to solve)
+  Request 5: Multiple CAPTCHAs in sequence (30+ seconds)
+  Request 6: 30-second timeout
+  Request 7: 2-minute timeout
+  Request 8: 5-minute timeout
+  Request 9+: Banned for 30 minutes
+```
+
+**Why This Works:**
+- First mistake costs nothing (could be human typo)
+- Second mistake starts adding friction (small delay)
+- Third mistake becomes expensive (hard CAPTCHA + delays)
+- Bots optimizing for speed hit exponential walls
+- Humans rarely make 3+ mistakes in sequence
+
+---
+
+#### 2. Gradual PoW Increases
+
+**Start with zero PoW. Ramp up only when suspicious.**
+
+```rust
+fn calculate_pow_difficulty(circuit_metrics: &CircuitMetrics) -> u32 {
+    let base_difficulty = 0;  // Start with NO PoW for clean circuits
+    
+    let suspicion_score = 
+        circuit_metrics.request_rate * 10 +           // Fast requests = suspicious
+        circuit_metrics.failed_captchas * 50 +        // Failed CAPTCHAs = very suspicious
+        circuit_metrics.honeypot_triggers * 100;      // Honeypot hit = extremely suspicious
+    
+    match suspicion_score {
+        0..=10 => 0,           // Clean: no PoW
+        11..=50 => 12,         // Slightly suspicious: trivial PoW (~0.1 sec)
+        51..=100 => 16,        // Suspicious: noticeable PoW (~1 sec)
+        101..=200 => 20,       // Very suspicious: expensive PoW (~10 sec)
+        _ => 24,               // Extremely suspicious: brutal PoW (~60 sec)
+    }
+}
+```
+
+**Impact:**
+- Legitimate users: **Never see PoW** (suspicion score stays at 0)
+- Slightly aggressive bots: Minor delays (1 second PoW)
+- Aggressive bots: Major delays (60+ second PoW per request)
+- Economic attack: Bot farm must spend CPU cycles that cost more than attack value
+
+---
+
+#### 3. Stateful Challenge Chains
+
+**Remember everything. Build a behavioral profile.**
+
+```rust
+struct CircuitBehaviorProfile {
+    // Timing patterns
+    avg_time_between_requests: Duration,
+    request_rate_variance: f64,           // Bots = low variance, humans = high
+    
+    // Interaction patterns
+    captcha_solve_times: Vec<Duration>,   // Bots = consistent, humans = variable
+    captcha_failures: Vec<CaptchaType>,   // What types do they fail?
+    
+    // Progression indicators
+    unique_pages_visited: HashSet<String>, // Bots hit same endpoint, humans browse
+    session_duration: Duration,            // Bots are fast, humans linger
+    
+    // Trust signals
+    vip_promotions: u32,                   // Earned VIP status in past?
+    xmr_payments: Vec<PaymentRecord>,      // Paid to skip queue?
+    
+    // Penalty accumulation
+    total_penalty_score: i32,
+    last_penalty_reset: Timestamp,
+}
+```
+
+**Behavioral Scoring:**
+```rust
+fn should_challenge(profile: &CircuitBehaviorProfile) -> ChallengeLevel {
+    // Good signals (reduce challenge)
+    let trust_score = 
+        profile.unique_pages_visited.len() as i32 * 5 +
+        profile.vip_promotions as i32 * 50 +
+        profile.xmr_payments.len() as i32 * 100;
+    
+    // Bad signals (increase challenge)
+    let penalty_score = profile.total_penalty_score;
+    
+    let net_score = trust_score - penalty_score;
+    
+    match net_score {
+        100.. => ChallengeLevel::None,        // Trusted: no challenge
+        50..=99 => ChallengeLevel::Easy,      // Mostly trusted: easy CAPTCHA
+        0..=49 => ChallengeLevel::Medium,     // Neutral: medium CAPTCHA
+        -50..=-1 => ChallengeLevel::Hard,     // Suspicious: hard CAPTCHA
+        ..-51 => ChallengeLevel::Multiple,    // Very suspicious: multiple CAPTCHAs
+    }
+}
+```
+
+**Why This Works:**
+- Humans naturally accumulate trust signals (browse pages, linger, varied timing)
+- Bots have uniform behavior (same timing, same pages, no variance)
+- System learns: "This circuit behaves like human" vs "This circuit behaves like bot"
+- Trust is portable across sessions (VIP status remembered for 7 days)
+
+---
+
+#### 4. Behavior Memory Across Sessions
+
+**Track circuits across reconnections.**
+
+```rust
+// Store circuit fingerprint in Redis with 7-day TTL
+fn generate_circuit_fingerprint(circuit_id: &str, user_agent: &str) -> String {
+    let fingerprint_data = format!("{}{}", circuit_id, user_agent);
+    blake3::hash(fingerprint_data.as_bytes()).to_string()
+}
+
+fn get_historical_behavior(fingerprint: &str) -> Option<CircuitBehaviorProfile> {
+    redis_client.get(format!("circuit_history:{}", fingerprint))
+}
+
+// On new request:
+let fingerprint = generate_circuit_fingerprint(circuit_id, user_agent);
+if let Some(history) = get_historical_behavior(&fingerprint) {
+    // Circuit has been here before
+    if history.vip_promotions > 0 {
+        // Previously earned VIP → fast-track now
+        return allow_without_challenge();
+    }
+    if history.total_penalty_score > 500 {
+        // Previously abusive → hard challenge now
+        return require_hard_captcha();
+    }
+}
+```
+
+**Decay Mechanism:**
+```rust
+// Penalties decay over time (forgiveness)
+fn decay_penalties(profile: &mut CircuitBehaviorProfile) {
+    let time_since_last_penalty = now() - profile.last_penalty_reset;
+    let decay_factor = (time_since_last_penalty.as_hours() as f64 / 24.0).min(1.0);
+    
+    profile.total_penalty_score = 
+        (profile.total_penalty_score as f64 * (1.0 - decay_factor * 0.5)) as i32;
+    
+    // Full forgiveness after 7 days
+    if time_since_last_penalty > Duration::days(7) {
+        profile.total_penalty_score = 0;
+    }
+}
+```
+
+**Why This Works:**
+- Good actors: Build reputation over time, challenges decrease
+- Bad actors: Penalties remembered, must wait for forgiveness
+- Tor circuit rotation: Doesn't help bots (fingerprint persists)
+- Humans who make mistakes: Forgiven after time passes
+
+---
+
+### Real-World Example: Bot vs Human
+
+**Scenario:** 10,000 requests to overwhelm service
+
+**Bot Farm Attack:**
+```
+Request 1-100:   No challenge (0.1 sec each) = 10 seconds total
+Request 101-200: Easy CAPTCHA (2 sec each) = 200 seconds total
+Request 201-300: Medium CAPTCHA (5 sec each) = 500 seconds total
+Request 301-400: Hard CAPTCHA (10 sec each) = 1000 seconds total
+Request 401-500: Multiple CAPTCHAs (30 sec each) = 15,000 seconds total
+Request 501+:    Banned (circuit burned, must rotate)
+
+Total time for 500 requests: ~4.6 hours
+Total time for 10,000 requests: ~920 hours (38 days) if circuit rotation allowed
+Cost: $50-500 in CAPTCHA solving services + massive CPU time
+```
+
+**Legitimate Human:**
+```
+Request 1:    No challenge (instant)
+Request 2:    No challenge (instant)
+Request 3:    No challenge (instant)
+...
+Request 100:  VIP promotion earned (instant)
+Request 101+: Instant access forever (trusted circuit)
+
+Total time: Seconds (all instant)
+Cost: $0
+```
+
+**Asymmetry Achieved:** 38 days for bot vs seconds for human.
 
 ---
 
@@ -182,6 +410,298 @@ Answer: "blue"
 
 ---
 
+### Variant 5: Proof-of-Elapsed-Time (PoET)
+
+**Difficulty:** Low (for humans)  
+**Solver Resistance:** Very High  
+**Avg Solve Time:** 4-8 seconds (enforced delay)
+
+**Concept:** AI is fast. Humans are slow. Use that.
+
+**Technique:**
+- Server issues challenge token with embedded timestamp
+- Token must be returned after **minimum 4 seconds** and **maximum 8 seconds**
+- No visual puzzle, just a wait
+- User sees: "Please wait... (countdown from 4)"
+- Too fast → bot (solved via automated tool)
+- Too slow → bot farm (queued for manual solving)
+- Just right → human
+
+**Example Flow:**
+```
+1. User requests page
+2. Server generates token: 
+   token = encrypt({"issued_at": 1738080000, "min_wait": 4, "max_wait": 8})
+3. Page displays: "Please wait 4 seconds..."
+   <form action="/verify" method="POST">
+     <input type="hidden" name="token" value="abc123...">
+     <button type="submit" id="submit-btn" disabled>Verifying...</button>
+   </form>
+   <meta http-equiv="refresh" content="4; url=javascript:document.getElementById('submit-btn').disabled=false;">
+   
+   OR (pure HTML, no JS):
+   <meta http-equiv="refresh" content="4; url=/verify?token=abc123...">
+
+4. Server validates:
+   elapsed = now() - token.issued_at
+   if elapsed < 4 seconds: REJECT (too fast = bot)
+   if elapsed > 8 seconds: REJECT (too slow = bot farm)
+   if 4 <= elapsed <= 8: ACCEPT (human timing)
+```
+
+**Anti-Solver Measures:**
+- **Bots optimize for speed**: They want to solve CAPTCHAs instantly. PoET forces 4+ second wait.
+- **Solver farms add latency**: Human solvers in overseas farms take 10-30 seconds (receive task, solve, return). PoET rejects > 8 seconds.
+- **Replay attacks fail**: Token contains timestamp, single-use only (deleted from Redis after validation)
+- **Parallelism collapses**: Bot must wait 4 seconds per request. 10,000 requests = 11+ hours minimum.
+
+**Why Humans Pass Naturally:**
+- 4-8 seconds is normal page load time
+- User sees "Verifying..." (thinks it's processing, not suspicious)
+- No cognitive load (no puzzle to solve)
+- Accessible (works for blind users, no vision required)
+
+**Implementation:**
+```rust
+fn validate_poet_token(token: &str, submitted_at: Timestamp) -> Result<(), PoETError> {
+    // Decrypt token
+    let token_data: PoETToken = decrypt_token(token)?;
+    
+    // Check if already used (replay attack)
+    if redis_client.exists(format!("poet_used:{}", token)).unwrap_or(false) {
+        return Err(PoETError::AlreadyUsed);
+    }
+    
+    // Calculate elapsed time
+    let elapsed = submitted_at - token_data.issued_at;
+    
+    // Validate timing window
+    if elapsed < token_data.min_wait {
+        log_suspicious_activity("PoET too fast", elapsed.as_secs());
+        return Err(PoETError::TooFast);
+    }
+    
+    if elapsed > token_data.max_wait {
+        log_suspicious_activity("PoET too slow", elapsed.as_secs());
+        return Err(PoETError::TooSlow);
+    }
+    
+    // Mark token as used
+    redis_client.set_ex(format!("poet_used:{}", token), "1", 300).unwrap();
+    
+    Ok(())
+}
+```
+
+**Adaptive Timing:**
+```rust
+// Adjust timing window based on Threat Dial
+fn get_poet_timing(threat_level: u8) -> (u64, u64) {
+    match threat_level {
+        1..=2 => (2, 10),   // Lenient: 2-10 seconds
+        3..=5 => (4, 8),    // Normal: 4-8 seconds
+        6..=8 => (5, 7),    // Strict: 5-7 seconds (narrow window)
+        9..=10 => (6, 6),   // Extreme: exactly 6 seconds (very hard for bots)
+        _ => (4, 8),
+    }
+}
+```
+
+**No JavaScript Required:**
+```html
+<!-- Pure HTML solution with meta refresh -->
+<html>
+<head>
+  <meta http-equiv="refresh" content="4; url=/verify?token=abc123...">
+  <title>Verifying...</title>
+</head>
+<body>
+  <h1>Please wait while we verify your request...</h1>
+  <p>This page will automatically continue in 4 seconds.</p>
+  <p>Do not refresh or close this page.</p>
+</body>
+</html>
+```
+
+---
+
+### Variant 6: Single-Use Interaction Puzzles (Contextual Continuity)
+
+**Difficulty:** Low  
+**Solver Resistance:** High  
+**Avg Solve Time:** 5-10 seconds
+
+**Concept:** Test memory and contextual understanding without images or ML.
+
+**Technique:**
+- **Page 1:** Display a random word: "Your access word is **EMBER**"
+- **Page 2:** Ask a question about it: "Type the 2nd letter of the word you were given"
+- **Answer:** "M"
+
+**Why This Works:**
+- **No images:** Can't use OCR or visual ML
+- **No complex ML:** Simple text parsing, but...
+- **Breaks headless relays:** Bot must maintain state across two page loads
+- **Breaks CAPTCHA farms:** Human solver sees Page 1, but by the time they submit answer for Page 2, session expired (5 min TTL)
+- **Parallelism collapses:** Each session needs unique word, bot must track thousands of sessions
+
+**Example Variations:**
+
+**1. Letter Position:**
+```
+Page 1: "Your access word is EMBER"
+Page 2: "Type the 2nd letter of the word you were given"
+Answer: M
+```
+
+**2. Reverse Spelling:**
+```
+Page 1: "Your access word is ROBOT"
+Page 2: "Type your access word backwards"
+Answer: TOBOR
+```
+
+**3. Letter Count:**
+```
+Page 1: "Your access word is CASTLE"
+Page 2: "How many letters are in your access word?"
+Answer: 6
+```
+
+**4. First/Last Letter:**
+```
+Page 1: "Your access word is THUNDER"
+Page 2: "Type the first and last letter of your access word (no space)"
+Answer: TR
+```
+
+**5. Color Association:**
+```
+Page 1: "Your access color is BLUE"
+Page 2: "What color were you given? Type it backwards."
+Answer: EULB
+```
+
+**Implementation:**
+```rust
+fn generate_interaction_puzzle() -> (String, InteractionPuzzle) {
+    let words = vec!["EMBER", "ROBOT", "CASTLE", "THUNDER", "CRIMSON", "FALCON", "GRANITE"];
+    let word = words[rand::random::<usize>() % words.len()];
+    
+    let puzzle_type = rand::random::<u8>() % 5;
+    
+    let (question, answer_fn): (String, Box<dyn Fn(&str) -> String>) = match puzzle_type {
+        0 => {
+            let pos = rand::random::<usize>() % word.len() + 1;
+            (
+                format!("Type the {} letter of the word you were given", ordinal(pos)),
+                Box::new(move |w: &str| w.chars().nth(pos - 1).unwrap().to_string())
+            )
+        },
+        1 => (
+            "Type your access word backwards".to_string(),
+            Box::new(|w: &str| w.chars().rev().collect())
+        ),
+        2 => (
+            "How many letters are in your access word?".to_string(),
+            Box::new(|w: &str| w.len().to_string())
+        ),
+        3 => (
+            "Type the first and last letter (no space)".to_string(),
+            Box::new(|w: &str| format!("{}{}", w.chars().next().unwrap(), w.chars().last().unwrap()))
+        ),
+        _ => (
+            "Type your access word in lowercase".to_string(),
+            Box::new(|w: &str| w.to_lowercase())
+        ),
+    };
+    
+    let token = generate_token();
+    let expected_answer = answer_fn(word);
+    
+    // Store in Redis with 5-minute TTL
+    redis_client.set_ex(
+        format!("interaction_puzzle:{}", token),
+        serde_json::to_string(&InteractionPuzzle {
+            word: word.to_string(),
+            expected_answer,
+            issued_at: now(),
+        }).unwrap(),
+        300  // 5 min TTL
+    ).unwrap();
+    
+    let page1 = format!("Your access word is <strong>{}</strong>", word);
+    
+    (page1, InteractionPuzzle { word: word.to_string(), question, token })
+}
+```
+
+**Page Flow:**
+```html
+<!-- Page 1: Display word -->
+<html>
+<body>
+  <h1>Step 1 of 2</h1>
+  <p>Your access word is: <strong style="font-size: 2em; color: #2A5FDD;">EMBER</strong></p>
+  <p>Please remember this word.</p>
+  <form action="/verify-interaction" method="GET">
+    <input type="hidden" name="token" value="abc123...">
+    <button type="submit">Continue</button>
+  </form>
+</body>
+</html>
+
+<!-- Page 2: Ask question -->
+<html>
+<body>
+  <h1>Step 2 of 2</h1>
+  <p>Type the 2nd letter of the word you were given:</p>
+  <form action="/submit-interaction" method="POST">
+    <input type="hidden" name="token" value="abc123...">
+    <input type="text" name="answer" required autofocus>
+    <button type="submit">Submit</button>
+  </form>
+</body>
+</html>
+```
+
+**Validation:**
+```rust
+fn validate_interaction_puzzle(token: &str, submitted_answer: &str) -> Result<(), CaptchaError> {
+    // Lookup puzzle in Redis
+    let puzzle: InteractionPuzzle = redis_client.get_del(format!("interaction_puzzle:{}", token))
+        .map_err(|_| CaptchaError::ExpiredOrInvalid)?;
+    
+    // Check timing (reject if > 5 min)
+    let elapsed = now() - puzzle.issued_at;
+    if elapsed > Duration::minutes(5) {
+        return Err(CaptchaError::Expired);
+    }
+    
+    // Validate answer (case-insensitive)
+    if submitted_answer.to_uppercase() == puzzle.expected_answer.to_uppercase() {
+        Ok(())
+    } else {
+        Err(CaptchaError::WrongAnswer)
+    }
+}
+```
+
+**Why Bots Struggle:**
+1. **State management**: Must remember word from Page 1 → Page 2
+2. **Session tracking**: Each session has unique word (no pattern to learn)
+3. **Timing pressure**: 5-minute TTL means solver farms can't queue tasks
+4. **No ML advantage**: AI can solve it, but not faster/cheaper than other CAPTCHAs
+5. **Breaks parallelism**: 10,000 bots = must track 10,000 unique words in memory
+
+**Why Humans Pass:**
+- Simple memory task (remember one word for 10 seconds)
+- No visual processing required (accessible)
+- Fast (5-10 seconds total)
+- Low cognitive load ("What was the 2nd letter?" is easy)
+
+---
+
 ## Anti-Bypass Mechanisms
 
 ### 1. Randomized Variant Selection
@@ -190,10 +710,10 @@ Answer: "blue"
 **Solution:** Randomly select variant per request weighted by Threat Dial level
 
 ```
-Threat Level 1-2: 70% Variant 1 (distorted text), 30% Variant 3 (pattern completion)
-Threat Level 3-5: 50% Variant 1, 30% Variant 3, 20% Variant 2
-Threat Level 6-8: 40% Variant 2, 40% Variant 3, 20% Variant 4
-Threat Level 9-10: 50% Variant 2, 30% Variant 4, 20% Variant 3 (no easy options)
+Threat Level 1-2: 40% Variant 5 (PoET), 30% Variant 6 (interaction puzzle), 30% Variant 1 (distorted text)
+Threat Level 3-5: 30% Variant 1, 25% Variant 6, 20% Variant 3, 15% Variant 5, 10% Variant 2
+Threat Level 6-8: 30% Variant 2, 25% Variant 3, 20% Variant 4, 15% Variant 1, 10% Variant 6
+Threat Level 9-10: 40% Variant 2, 30% Variant 4, 20% Variant 3, 10% Variant 1 (no easy options)
 ```
 
 **Impact:** Bot cannot specialize for one CAPTCHA type
