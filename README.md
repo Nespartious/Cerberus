@@ -139,10 +139,14 @@ See [docs/scaffold.md](docs/scaffold.md) for the complete folder structure and [
 - **[Virtual Queue System](docs/0200-feature-virtual-queue.md)**: Browser-side waiting room with PoW priority
 - **[Threat Dial System](docs/0201-feature-threat-dial.md)**: Dynamic defense intensity control
 - **[XMR Priority System](docs/0202-feature-xmr-priority.md)**: Monero payment-based queue fast-pass
+- **[Advanced CAPTCHA System](docs/0203-feature-advanced-captcha.md)**: AI-resistant image CAPTCHAs with multiple variants
 
 **Operations (0300-series):**
 - **[Monitoring & UI](docs/0300-operations-monitoring-ui.md)**: Grafana dashboards, admin panel, metrics
 - **[Vanity Onion Generation](docs/0301-operations-vanity-onion.md)**: mkp224o integration for branded addresses
+
+**Cluster & Scaling (0500-series):**
+- **[Cluster System](docs/0500-operations-cluster-system.md)**: Multi-node deployment with shared state and load distribution
 
 **Infrastructure (0400-series):**
 - **[Dependencies Audit](docs/0400-infra-dependencies.md)**: Version matrix and compatibility
