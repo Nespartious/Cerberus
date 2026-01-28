@@ -515,6 +515,339 @@ Operator's Tor Browser
 - [ ] Add keyboard shortcuts (P=promote, B=ban, etc.)
 - [ ] SSH integration guide for remote access
 
+### Sprint 6: Remote Grafana Streaming
+
+- [ ] Configure Prometheus remote write endpoint
+- [ ] Set up Grafana Cloud agent (or self-hosted Grafana instance)
+- [ ] Create connection string generator in Monitoring UI
+- [ ] Test streaming over Tor (latency, reliability)
+- [ ] Document clearnet IP/port access option (for low-latency monitoring)
+- [ ] Implement authentication (bearer tokens for remote access)
+
+---
+
+## 📡 Remote Grafana Monitoring
+
+### User Story
+
+**As a service operator managing multiple Cerberus nodes remotely**  
+**I want to stream metrics to my own Grafana instance**  
+**So that I can monitor all nodes from a single dashboard without SSH/Tor access to each VPS**
+
+**Acceptance Criteria:**
+- Copy connection string from Cerberus Monitoring UI
+- Paste connection string into remote Grafana as data source
+- Metrics stream in real-time (< 30 second delay)
+- No database storage on VPS (pure streaming, minimal resource usage)
+- Support both Tor-based streaming (slow, anonymous) and clearnet IP/port (fast, requires firewall rules)
+
+---
+
+### Streaming Architecture Options
+
+#### Option 1: Prometheus Remote Write (Recommended) ⭐⭐⭐
+
+**How It Works:**
+```
+Cerberus Node (VPS)                 Operator's Grafana (Home/Office)
+┌────────────────────┐              ┌─────────────────────────┐
+│ Prometheus         │              │ Remote Grafana Instance │
+│ (scrapes metrics)  │              │                         │
+│                    │   HTTP POST  │  Prometheus Remote      │
+│  Remote Write ────────────────────►  Write Receiver         │
+│  Endpoint          │   (stream)   │                         │
+└────────────────────┘              └─────────────────────────┘
+                                              │
+                                              ▼
+                                    [View dashboards with
+                                     all nodes' metrics]
+```
+
+**Pros:**
+- ✅ **No database on VPS**: Prometheus stores minimal data (15 min buffer), immediately pushes to remote
+- ✅ **Pure streaming**: Metrics sent as they're collected (10-30 second intervals)
+- ✅ **Native Prometheus**: Works with any Prometheus-compatible receiver (Grafana Cloud, Mimir, Thanos, VictoriaMetrics)
+- ✅ **Low resource usage**: ~50MB RAM for Prometheus with remote write (vs 500MB+ for full local storage)
+- ✅ **Built-in retry**: If network drops, Prometheus queues samples and retries
+
+**Cons:**
+- ⚠️ Requires outbound HTTP from VPS (configure firewall to allow)
+- ⚠️ Network interruption = data loss for that window (no long-term local storage)
+
+**Configuration:**
+```yaml
+# /etc/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    node: 'cerberus-node-1'  # Identify this node in multi-node setup
+    cluster: 'production'
+
+scrape_configs:
+  - job_name: 'cerberus'
+    static_configs:
+      - targets:
+        - 'localhost:9100'  # Node exporter (system metrics)
+        - 'localhost:9101'  # HAProxy exporter
+        - 'localhost:9102'  # Fortify exporter
+        - 'localhost:9103'  # Nginx exporter
+
+remote_write:
+  - url: 'https://your-grafana-instance.com/api/v1/push'
+    basic_auth:
+      username: 'cerberus-node-1'
+      password: 'your-secret-token-here'
+    queue_config:
+      capacity: 10000        # Buffer up to 10k samples if network slow
+      max_shards: 5          # Parallel HTTP connections
+      min_shards: 1
+      max_samples_per_send: 500
+      batch_send_deadline: 5s
+    # Optional: Send via Tor for anonymity (slower)
+    proxy_url: 'socks5://127.0.0.1:9050'  # Tor SOCKS5 proxy
+```
+
+**Connection String Generator** (in Monitoring UI):
+```
+┌────────────────────────────────────────────────────────────┐
+│ Remote Monitoring Setup                                    │
+├────────────────────────────────────────────────────────────┤
+│ 1. Your remote Grafana URL:                                │
+│    [https://your-grafana.com                    ] [Test]   │
+│                                                            │
+│ 2. Authentication:                                         │
+│    Username: [cerberus-node-1                  ]           │
+│    Password: [●●●●●●●●●●●●●●●●●●●●●●●●]           │
+│                                                            │
+│ 3. Connection Method:                                      │
+│    ○ Clearnet (Fast, requires firewall rule)              │
+│    ● Tor (Slow ~5-10 sec delay, anonymous)                │
+│                                                            │
+│ 4. Copy this to /etc/prometheus/prometheus.yml:           │
+│ ┌────────────────────────────────────────────────────────┐ │
+│ │ remote_write:                                          │ │
+│ │   - url: 'https://your-grafana.com/api/v1/push'       │ │
+│ │     basic_auth:                                        │ │
+│ │       username: 'cerberus-node-1'                      │ │
+│ │       password: 'generated-token-abc123'               │ │
+│ │     proxy_url: 'socks5://127.0.0.1:9050'  # Tor       │ │
+│ └────────────────────────────────────────────────────────┘ │
+│                                                            │
+│ [Copy to Clipboard] [Download prometheus.yml]             │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### Option 2: Grafana Agent (Lightweight Alternative) ⭐⭐
+
+**How It Works:**
+```
+Cerberus Node (VPS)                 Operator's Grafana
+┌────────────────────┐              ┌─────────────────────┐
+│ Grafana Agent      │   Remote     │ Grafana Cloud or    │
+│ (collects metrics  │   Write      │ Self-Hosted Mimir   │
+│  directly, no      ├──────────────► (Receives metrics)  │
+│  Prometheus)       │              │                     │
+└────────────────────┘              └─────────────────────┘
+```
+
+**Pros:**
+- ✅ **Even lighter**: ~30MB RAM (vs 50MB for Prometheus)
+- ✅ **Drop-in replacement**: Compatible with Prometheus remote write protocol
+- ✅ **Better for multi-node**: Designed for distributed monitoring
+- ✅ **Native Grafana Cloud support**: One-click setup with Grafana Cloud
+
+**Cons:**
+- ⚠️ Less mature than Prometheus (newer project)
+- ⚠️ Fewer ecosystem tools (Prometheus has more exporters)
+
+**Configuration:**
+```yaml
+# /etc/grafana-agent/agent.yml
+server:
+  log_level: info
+
+metrics:
+  wal_directory: /var/lib/grafana-agent/wal
+  global:
+    scrape_interval: 15s
+    external_labels:
+      node: 'cerberus-node-1'
+      cluster: 'production'
+    remote_write:
+      - url: 'https://your-grafana.com/api/v1/push'
+        basic_auth:
+          username: 'cerberus-node-1'
+          password: 'your-secret-token-here'
+
+  configs:
+    - name: cerberus
+      scrape_configs:
+        - job_name: 'cerberus'
+          static_configs:
+            - targets: ['localhost:9100', 'localhost:9101', 'localhost:9102']
+```
+
+---
+
+#### Option 3: Direct Prometheus Query API (Read-Only) ⭐
+
+**How It Works:**
+```
+Cerberus Node (VPS)                 Operator's Grafana
+┌────────────────────┐              ┌─────────────────────┐
+│ Prometheus         │              │ Remote Grafana      │
+│ (stores metrics    │   HTTP GET   │                     │
+│  locally)          │◄─────────────│ Queries Prometheus  │
+│                    │   /api/v1/   │ directly via API    │
+│ Exposed on         │   query      │                     │
+│ IP:9090 or Tor     │              │                     │
+└────────────────────┘              └─────────────────────┘
+```
+
+**Pros:**
+- ✅ **No configuration on VPS**: Just expose Prometheus port
+- ✅ **Full local storage**: Metrics retained on VPS (useful for debugging)
+- ✅ **Pull model**: VPS doesn't need outbound connectivity
+
+**Cons:**
+- ❌ **Requires inbound access**: Must expose Prometheus port (security risk)
+- ❌ **More resource usage**: Prometheus stores full TSDB locally (~500MB RAM, ~2GB disk)
+- ❌ **Slower over Tor**: Query latency 5-10 seconds per dashboard load
+
+**Configuration:**
+```yaml
+# /etc/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'cerberus'
+    static_configs:
+      - targets: ['localhost:9100', 'localhost:9101', 'localhost:9102']
+
+# Expose on specific IP (NOT 0.0.0.0 publicly!)
+web:
+  listen-address: '127.0.0.1:9090'  # Local only
+  # OR expose via Tor hidden service
+
+# /etc/tor/torrc - Add Prometheus as hidden service
+HiddenServiceDir /var/lib/tor/cerberus-prometheus
+HiddenServicePort 9090 127.0.0.1:9090
+```
+
+**Grafana Data Source Config:**
+```
+Name: Cerberus Node 1
+Type: Prometheus
+URL: http://abc123def456.onion:9090  (via Tor)
+  OR http://198.51.100.10:9090       (clearnet with firewall rule)
+Auth: Basic Auth (username/password)
+```
+
+---
+
+### Comparison: Storage & Resource Usage
+
+| Method | RAM Usage | Disk Storage | Latency | Security |
+|--------|-----------|--------------|---------|----------|
+| **Prometheus Remote Write** | 50MB | ~100MB (15 min buffer) | 15-30s | ✅ Outbound only |
+| **Grafana Agent** | 30MB | ~50MB (WAL only) | 15-30s | ✅ Outbound only |
+| **Direct Query API (Tor)** | 500MB | ~2GB (full TSDB) | 5-10s | ⚠️ Inbound via Tor |
+| **Direct Query API (Clearnet)** | 500MB | ~2GB (full TSDB) | < 1s | ❌ Inbound clearnet |
+
+**Recommendation:**
+- **Low resource VPS (< 2GB RAM)**: Use **Grafana Agent** with remote write
+- **High traffic monitoring**: Use **Prometheus Remote Write** (more mature, better retry logic)
+- **Offline/airgapped**: Use **Direct Query API via Tor** (no outbound connectivity needed)
+
+---
+
+### Security Considerations
+
+#### Clearnet IP/Port Exposure
+
+**Problem:** Exposing Prometheus port on clearnet = attack surface
+
+**Mitigations:**
+1. **Firewall whitelist**: Only allow operator's home IP
+   ```bash
+   ufw allow from 203.0.113.50 to any port 9090 proto tcp
+   ufw deny 9090/tcp  # Block all others
+   ```
+
+2. **VPN/WireGuard**: Operator connects to VPS via WireGuard tunnel
+   ```
+   Operator's Grafana ──[WireGuard Tunnel]──► VPS Prometheus (10.8.0.1:9090)
+   ```
+
+3. **HTTP Basic Auth + TLS**: Require username/password over HTTPS
+   ```yaml
+   # Prometheus with TLS + auth
+   web:
+     listen-address: '198.51.100.10:9090'
+     tls_server_config:
+       cert_file: /etc/prometheus/tls/cert.pem
+       key_file: /etc/prometheus/tls/key.pem
+   basic_auth_users:
+     admin: $2y$10$hashed_password_here
+   ```
+
+4. **Rate limiting**: Prevent query DoS attacks
+   ```yaml
+   # Prometheus rate limiting (requires reverse proxy like Nginx)
+   limit_req_zone $binary_remote_addr zone=prom:10m rate=10r/s;
+   ```
+
+#### Tor-Based Streaming
+
+**Benefits:**
+- ✅ Anonymous (VPS IP not revealed to Grafana instance)
+- ✅ No firewall configuration needed
+- ✅ NAT traversal (works from behind NAT)
+
+**Drawbacks:**
+- ⚠️ High latency (~5-10 seconds per batch)
+- ⚠️ Tor circuit failures = temporary data loss
+- ⚠️ Slower dashboard rendering
+
+**Configuration:**
+```yaml
+# Prometheus remote write via Tor
+remote_write:
+  - url: 'http://your-grafana-onion.onion/api/v1/push'
+    proxy_url: 'socks5://127.0.0.1:9050'
+    queue_config:
+      max_shards: 2  # Reduce parallelism (Tor doesn't benefit from many shards)
+      batch_send_deadline: 30s  # Longer batches to compensate for latency
+```
+
+---
+
+### Implementation Checklist
+
+**For Operators:**
+- [ ] Decide: Remote write (streaming) or direct query (pull)
+- [ ] Choose: Clearnet (fast) or Tor (anonymous)
+- [ ] Set up remote Grafana instance (Grafana Cloud or self-hosted)
+- [ ] Generate bearer token or basic auth credentials
+- [ ] Copy connection string from Cerberus Monitoring UI
+- [ ] Paste into `/etc/prometheus/prometheus.yml` (remote write section)
+- [ ] Restart Prometheus: `systemctl restart prometheus`
+- [ ] Verify metrics flowing: Check Grafana data source "Last Scraped"
+- [ ] Create dashboards for all Cerberus nodes
+- [ ] Set up alerts (CPU > 90%, circuit flood, node offline)
+
+**For Development:**
+- [ ] Add "Remote Monitoring Setup" page to Monitoring UI
+- [ ] Implement connection string generator (pre-fill YAML config)
+- [ ] Add test button (verify Grafana URL is reachable)
+- [ ] Support multiple remote write destinations (primary + backup)
+- [ ] Document troubleshooting (firewall issues, Tor failures, auth errors)
+- [ ] Create example Grafana dashboards (JSON exports)
+
 ---
 
 ## 🔒 Security Hardening

@@ -6,11 +6,12 @@
 
 **Acceptance Criteria:**
 - "Join Cluster" button in Monitoring UI to connect new node to existing cluster
-- Cluster nodes share defense state (Threat Dial, circuit reputation, CAPTCHA sessions) via Redis
+- Nodes communicate over clearnet via WireGuard tunnel (fast, encrypted P2P)
+- Each node serves its own .onion mirror independently (no single point of failure)
+- Nodes share defense state (Threat Dial, circuit reputation, CAPTCHA sessions) via Redis Cluster
 - HAProxy stick tables replicate across cluster for consistent circuit tracking
-- Operators input real IP + port (not .onion) to establish secure P2P connection
-- Cluster auto-balances traffic across nodes (via DNS round-robin or HAProxy load balancing)
-- One node can fail without cluster-wide disruption (high availability)
+- Nodes can route sessions to each other when needed (load balancing, failover)
+- If one node dies, others continue serving traffic independently
 - Monitoring UI shows all cluster nodes and their health status in real-time
 
 ---
@@ -41,16 +42,17 @@
 
 ## Overview
 
-The Cerberus Cluster System enables **horizontal scaling** by allowing multiple Cerberus nodes to work together as a unified defense system. Each node operates independently but shares critical state (circuit reputation, threat level, CAPTCHA sessions) to provide consistent protection across the cluster.
+The Cerberus Cluster System enables **horizontal scaling** by allowing multiple Cerberus nodes to work together while remaining **fully independent**. Each node serves its own .onion mirror and can operate alone, but shares defense state (circuit reputation, threat level, CAPTCHA sessions) to provide consistent protection across the cluster.
 
 ### Design Goals
 
-1. **Zero-Downtime Scaling**: Add/remove nodes without interrupting service
-2. **State Consistency**: All nodes make defense decisions based on shared global state
-3. **Fault Tolerance**: Cluster survives individual node failures (no single point of failure)
-4. **Simple Setup**: Operators join cluster via UI button + IP address (no complex config)
-5. **Transparent to Users**: End users see single .onion address, unaware of backend cluster
-6. **Secure P2P**: Nodes communicate over encrypted channels (not through Tor)
+1. **Full Independence**: Each node operates autonomously; if one dies, others continue unaffected
+2. **No Single Point of Failure**: No leader/coordinator node; all nodes are peers
+3. **WireGuard P2P**: Fast, encrypted communication over clearnet (not Tor)
+4. **State Consistency**: Nodes share defense decisions via Redis Cluster for unified protection
+5. **Simple Setup**: Operators join cluster via UI button + WireGuard config (auto-generated)
+6. **Session Routing**: Nodes can redirect traffic to each other for load distribution
+7. **Zero-Downtime Scaling**: Add/remove nodes without interrupting service
 
 ### Use Cases
 
@@ -117,24 +119,26 @@ The Cerberus Cluster System enables **horizontal scaling** by allowing multiple 
 ### Workflow: Adding a New Node
 
 ```
-Step 1: Operator starts new Cerberus instance on fresh server
-Step 2: Operator opens Monitoring UI → clicks "Join Cluster"
+Step 1: Operator starts new Cerberus instance on fresh server (Node 2)
+Step 2: Operator opens Monitoring UI on Node 2 → clicks "Join Cluster"
 Step 3: Operator inputs:
-        - Cluster Leader IP: 198.51.100.10
-        - Cluster Leader Port: 9000
-        - Cluster Secret: <shared passphrase>
-Step 4: New node sends join request to leader over HTTPS
-Step 5: Leader validates secret, adds node to cluster membership list in Redis
-Step 6: Leader responds with:
+        - Peer Node IP: 198.51.100.10 (any existing cluster node)
+        - Peer Node WireGuard Port: 51820
+        - Cluster Secret: <shared passphrase for mutual authentication>
+Step 4: Node 2 generates WireGuard keypair, sends join request to Node 1 over HTTPS
+Step 5: Node 1 validates secret, returns:
+        - WireGuard server config (IP range, allowed peers)
         - Redis Cluster connection string
-        - List of all existing nodes (IP + port)
+        - List of all existing nodes (IPs, WireGuard pubkeys)
         - HAProxy peer configuration
-Step 7: New node configures itself:
-        - Connects to Redis Cluster
+Step 6: Node 2 auto-configures:
+        - Sets up WireGuard tunnel to all existing nodes
+        - Connects to Redis Cluster over WireGuard
         - Establishes HAProxy peer connections
         - Syncs initial state (Threat Dial, circuit reputation)
-Step 8: New node announces itself as "healthy" in Redis
-Step 9: All nodes see new node in monitoring UI
+Step 7: Node 2 announces itself as "healthy" in Redis cluster membership
+Step 8: All nodes receive notification, add Node 2 to their WireGuard peers
+Step 9: All nodes see Node 2 in Monitoring UI cluster status page
 ```
 
 ### Join Request (HTTP POST)
@@ -146,7 +150,8 @@ Content-Type: application/json
 {
   "node_id": "cerberus-node-2",
   "ip_address": "198.51.100.11",
-  "port": 9000,
+  "wireguard_pubkey": "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD=",
+  "wireguard_port": 51820,
   "cluster_secret": "shared-passphrase-here"
 }
 ```
@@ -156,27 +161,116 @@ Content-Type: application/json
 {
   "status": "accepted",
   "cluster_id": "cerberus-cluster-alpha",
+  "wireguard_config": {
+    "interface": {
+      "address": "10.100.0.2/24",
+      "private_key": "<node-2-generates-this-locally>",
+      "listen_port": 51820
+    },
+    "peers": [
+      {
+        "public_key": "xY9zA8bC7dE6fG5hI4jK3lM2nO1pQ0rS9tU8vW7xY6z=",
+        "endpoint": "198.51.100.10:51820",
+        "allowed_ips": ["10.100.0.1/32"],
+        "persistent_keepalive": 25
+      }
+    ]
+  },
   "redis_cluster": [
-    "redis://198.51.100.10:6379",
-    "redis://198.51.100.11:6380"
+    "redis://10.100.0.1:6379",
+    "redis://10.100.0.2:6379"
   ],
   "nodes": [
     {
       "node_id": "cerberus-node-1",
       "ip_address": "198.51.100.10",
-      "port": 9000,
-      "role": "leader"
+      "wireguard_ip": "10.100.0.1",
+      "wireguard_pubkey": "xY9zA8bC7dE6fG5hI4jK3lM2nO1pQ0rS9tU8vW7xY6z="
     }
   ],
   "haproxy_peers": [
     {
       "name": "node1",
-      "ip": "198.51.100.10",
+      "ip": "10.100.0.1",
       "port": 1024
     }
   ],
   "current_threat_level": 5
 }
+```
+
+---
+
+### WireGuard Tunnel Architecture
+
+**Why WireGuard over Tor?**
+- ✅ **10-100x faster**: Sub-5ms latency vs 200-500ms for Tor
+- ✅ **Lower overhead**: ~50-100 bytes per packet vs Tor's layered encryption
+- ✅ **Better for real-time sync**: HAProxy stick tables, Redis Pub/Sub benefit from low latency
+- ✅ **Simpler NAT traversal**: Direct UDP hole-punching vs Tor's complex routing
+- ✅ **Still encrypted**: ChaCha20-Poly1305, Curve25519 (Tor-level cryptography)
+
+**Topology:**
+```
+Node 1 (198.51.100.10)              Node 2 (198.51.100.11)
+┌───────────────────────┐      ┌───────────────────────┐
+│ WireGuard: 10.100.0.1  │      │ WireGuard: 10.100.0.2  │
+│ Endpoint: :51820      │◄────►│ Endpoint: :51820      │
+│                       │ UDP  │                       │
+│ Redis: 10.100.0.1:6379│      │ Redis: 10.100.0.2:6379│
+│ HAProxy: 10.100.0.1:  │      │ HAProxy: 10.100.0.2:  │
+│          1024         │      │          1024         │
+└───────────────────────┘      └───────────────────────┘
+         │                              │
+         └──────────────────────────────┘
+         All cluster traffic over WireGuard
+         (Redis, HAProxy, Cluster Coordinator)
+```
+
+**Configuration (Auto-Generated by Join Process):**
+```ini
+# /etc/wireguard/wg-cerberus.conf on Node 2
+[Interface]
+Address = 10.100.0.2/24
+PrivateKey = <node-2-private-key>
+ListenPort = 51820
+
+# Peer: Node 1
+[Peer]
+PublicKey = xY9zA8bC7dE6fG5hI4jK3lM2nO1pQ0rS9tU8vW7xY6z=
+Endpoint = 198.51.100.10:51820
+AllowedIPs = 10.100.0.1/32
+PersistentKeepalive = 25  # Keep NAT holes open
+
+# Peer: Node 3 (added when Node 3 joins)
+[Peer]
+PublicKey = zF8eD7cB6aY5xW4vU3tS2rQ1pO0nM9lK8jI7hG6fE5d=
+Endpoint = 198.51.100.12:51820
+AllowedIPs = 10.100.0.3/32
+PersistentKeepalive = 25
+```
+
+**Automatic Peer Addition:**
+When Node 3 joins, Cluster Coordinator on Node 1 and Node 2 automatically:
+1. Receives Node 3's public key via join request
+2. Appends new `[Peer]` section to `/etc/wireguard/wg-cerberus.conf`
+3. Runs `wg syncconf wg-cerberus <(wg-quick strip wg-cerberus)` to reload without downtime
+4. Node 3 now reachable at `10.100.0.3` from all nodes
+
+**Firewall Rules:**
+```bash
+# Allow WireGuard UDP (inbound from any cluster node)
+ufw allow 51820/udp
+
+# Allow Redis only over WireGuard
+ufw allow from 10.100.0.0/24 to any port 6379 proto tcp
+
+# Allow HAProxy peers only over WireGuard
+ufw allow from 10.100.0.0/24 to any port 1024 proto tcp
+
+# Deny Redis/HAProxy from clearnet
+ufw deny 6379/tcp
+ufw deny 1024/tcp
 ```
 
 ---
@@ -468,12 +562,17 @@ backend cerberus_cluster
 
 ### Node Roles
 
-| Role | Responsibilities | Quantity |
-|------|------------------|----------|
-| **Leader** | Accepts join requests, distributes config, coordinates Threat Dial changes | 1 (elected) |
-| **Member** | Processes traffic, shares state, reports health | N |
+**All Nodes Are Equal Peers** - No leader/member distinction. Every node can:
+- Accept join requests from new nodes
+- Process traffic independently via its own .onion mirror
+- Share defense state via Redis Cluster
+- Route sessions to other nodes if needed
+- Operate completely autonomously if isolated from cluster
 
-**Leader Election:** If leader dies, oldest surviving node becomes new leader (via Redis-based election)
+**No Leader Election Needed** - Since all nodes are peers, there's no leader to elect. Each node independently:
+- Responds to join requests from any new node
+- Publishes Threat Dial changes to Redis (last write wins)
+- Makes defense decisions based on shared Redis state
 
 ---
 
@@ -543,9 +642,9 @@ fn check_node_health(node_id: &str) -> bool {
 
 | Failure | Impact | Mitigation |
 |---------|--------|------------|
-| **1 Node Dies** | Traffic redistributed to other nodes | DNS round-robin + HAProxy health checks |
-| **Leader Dies** | New leader elected automatically | Redis-based election (oldest node wins) |
+| **1 Node Dies** | Other nodes continue serving independently | Each node has its own .onion, no dependency |
 | **Redis Node Dies** | Replica promoted to master | Redis Cluster auto-failover (< 10 sec) |
+| **WireGuard Tunnel Down** | Nodes lose shared state sync | Nodes continue operating independently with local state |
 | **Network Partition** | Cluster splits into sub-clusters | Quorum-based decisions (majority wins) |
 | **Entire Datacenter Down** | Multi-region cluster continues | Deploy nodes in 2+ geographic regions |
 
@@ -839,8 +938,9 @@ cerberus_haproxy_peers_connected{peer="node-3"} 1
 
 **Goal:** Cluster survives node failures
 
-- [ ] Leader election: If leader dies, new leader elected
+- [ ] Node failure: Kill one node → verify others continue independently
 - [ ] Redis failover: Test Redis master node failure (replica promotion)
+- [ ] WireGuard recovery: Break tunnel → verify nodes reestablish connection
 - [ ] HAProxy peer recovery: Node restarts → re-sync stick tables
 - [ ] Quorum-based decisions: 5-node cluster → partition into 3+2 → verify majority group continues
 - [ ] Monitoring UI: Alert if > 50% nodes down

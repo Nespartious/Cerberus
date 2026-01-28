@@ -40,7 +40,7 @@
 
 ## Overview
 
-The Advanced CAPTCHA System provides **AI-resistant, human-solvable challenges** that work without JavaScript. Unlike traditional CAPTCHAs that rely on single techniques (distorted text only), this system combines multiple variants with adaptive difficulty to stay ahead of automated solvers.
+The Advanced CAPTCHA System provides **AI-resistant, human-solvable challenges** that work without JavaScript. Unlike traditional CAPTCHAs that rely on single techniques (distorted text only), this system combines **4 distinct variants** with adaptive difficulty to stay ahead of automated solvers.
 
 ### Design Goals
 
@@ -150,33 +150,7 @@ Answer: "square" (accept "square", "sq", "box")
 
 ---
 
-### Variant 4: Distorted Arithmetic with Visual Operators
-
-**Difficulty:** Low-Medium  
-**Solver Resistance:** Medium  
-**Avg Solve Time:** 5-8 seconds
-
-**Technique:**
-- Math problem where numbers and operators are images, not text
-- Example: [distorted "3"] [+ symbol as scribble] [distorted "7"] = ?
-- User types the numeric answer: "10"
-- Combines OCR difficulty with arithmetic
-
-**Example Generation:**
-```
-Problem: 3 + 7
-Visual: [wavy "3" image] [hand-drawn + symbol] [rotated "7" image] = ?
-Answer: 10 (accept "10", "ten")
-```
-
-**Anti-Solver Measures:**
-- Must solve OCR first, then arithmetic
-- Operator symbols drawn as scribbles (not standard +, -, ×)
-- Can use word numbers: "three + seven = ?" requires understanding text
-
----
-
-### Variant 5: Color-Text Mismatch
+### Variant 4: Color-Text Mismatch
 
 **Difficulty:** Medium  
 **Solver Resistance:** High  
@@ -216,10 +190,10 @@ Answer: "blue"
 **Solution:** Randomly select variant per request weighted by Threat Dial level
 
 ```
-Threat Level 1-2: 80% Variant 4 (easy math), 20% Variant 1 (text)
+Threat Level 1-2: 70% Variant 1 (distorted text), 30% Variant 3 (pattern completion)
 Threat Level 3-5: 50% Variant 1, 30% Variant 3, 20% Variant 2
-Threat Level 6-8: 40% Variant 2, 40% Variant 3, 20% Variant 5
-Threat Level 9-10: 50% Variant 2, 30% Variant 5, 20% Variant 3 (no easy options)
+Threat Level 6-8: 40% Variant 2, 40% Variant 3, 20% Variant 4
+Threat Level 9-10: 50% Variant 2, 30% Variant 4, 20% Variant 3 (no easy options)
 ```
 
 **Impact:** Bot cannot specialize for one CAPTCHA type
