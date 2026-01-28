@@ -5,7 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tor](https://img.shields.io/badge/Tor-V3%20Onion-7D4698.svg)](https://www.torproject.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![Security](https://img.shields.io/badge/Security-Hardened-green.svg)](docs/instructions.md)
+[![Status](https://img.shields.io/badge/Status-Planning%20%2F%20Design-yellow.svg)](docs/scaffold.md)
+
+> **⚠️ PROJECT STATUS**: Cerberus is currently in the **design and documentation phase**. The architecture, specifications, and implementation plans are complete, but the actual code has not been written yet. This README describes the intended design and capabilities.
 
 ---
 
@@ -27,14 +29,14 @@ Named after the three-headed guardian of the underworld, Cerberus provides **thr
 
 ---
 
-## ✨ Key Features
+## ✨ Planned Features
 
-### 🚀 Performance & Scalability
-- **10,000 concurrent connections** out-of-the-box (production-ready defaults)
-- **Static CAPTCHA gate** offloads 95%+ of traffic from application layer
-- **Async Rust backend** (Tokio) for non-blocking I/O and efficient resource usage
-- **Sub-100ms CAPTCHA generation** with pre-generation pool
-- **Virtual queue system** prevents server resource exhaustion during attacks
+### 🚀 Performance & Scalability Goals
+- **10,000 concurrent connections** target with optimized configuration
+- **Static CAPTCHA gate** design to offload traffic from application layer
+- **Async Rust backend** (Tokio) planned for non-blocking I/O
+- **Fast CAPTCHA generation** with pre-generation pool architecture
+- **Virtual queue system** to prevent server resource exhaustion during attacks
 
 ### 🛡️ Advanced DDoS Mitigation
 - **Per-Circuit Rate Limiting**: Track and throttle Tor circuits independently (not IPs)
@@ -88,99 +90,36 @@ Named after the three-headed guardian of the underworld, Cerberus provides **thr
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Prerequisites
+### Current Status: Documentation Phase
 
-**Supported Deployment Environments:**
-- **Ubuntu 22.04 LTS or 24.04 LTS** (Recommended)
-- **Debian 11 (Bullseye) or 12 (Bookworm)** (Recommended)
-- **Docker** (Any host OS with Docker 24.0+)
+Cerberus is currently in the **design and planning phase**. The complete architecture and specifications are documented, but implementation has not begun.
 
-**System Requirements:**
+### Planned Deployment Environments
+
+**Target Platforms:**
+- **Ubuntu 22.04 LTS or 24.04 LTS** (Primary target)
+- **Debian 11 (Bullseye) or 12 (Bookworm)** (Primary target)
+- **Docker** (Planned containerized deployment)
+
+**Planned System Requirements:**
 - **Tor**: 0.4.8+ (for PoW support)
-- **HAProxy**: 2.6+
-- **Nginx**: 1.22+
-- **Rust**: 1.75+ (for Fortify)
+- **HAProxy**: 2.8+ LTS
+- **Nginx**: 1.26+
+- **Rust**: 1.82+ (for Fortify)
 - **RAM**: 2GB minimum (4GB recommended)
 - **CPU**: 2 cores minimum (4 cores recommended)
 - **Disk**: 10GB minimum
 
-> **Note**: Cerberus is designed for Ubuntu/Debian. Other distributions may work but are not officially supported.
+### Implementation Roadmap
 
-### Installation Methods
+See [docs/scaffold.md](docs/scaffold.md) for the complete folder structure and [docs/CERBERUS_MASTER_ARCH.md](docs/CERBERUS_MASTER_ARCH.md) for architecture details.
 
-#### Option 1: One-Line Installation (Ubuntu/Debian)
-
-```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/cerberus/main/scripts/cerberus.sh | sudo bash
-```
-
-#### Option 2: Docker Deployment (Recommended for Testing)
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/cerberus.git
-cd cerberus
-
-# Configure your deployment
-cp config/examples/cerberus.conf.example cerberus.conf
-nano cerberus.conf  # Edit settings
-
-# Start with Docker Compose
-docker-compose up -d
-
-# Get your onion address
-docker-compose exec tor cat /var/lib/tor/cerberus/hostname
-```
-
-#### Option 3: Manual Installation (Ubuntu/Debian)
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/cerberus.git
-   cd cerberus
-   ```
-
-2. **Verify OS compatibility**
-   ```bash
-   # Check OS version
-   lsb_release -a
-   # Should show: Ubuntu 22.04/24.04 or Debian 11/12
-   ```
-
-3. **Configure your deployment**
-   ```bash
-   cp config/examples/cerberus.conf.example cerberus.conf
-   nano cerberus.conf  # Edit target service, ports, sensitivity
-   ```
-
-4. **Run the installer**
-   ```bash
-   sudo ./scripts/cerberus.sh install
-   ```
-
-5. **Start services**
-   ```bash
-   sudo systemctl start cerberus-tor
-   sudo systemctl start cerberus-haproxy
-   sudo systemctl start cerberus-nginx
-   sudo systemctl start cerberus-fortify
-   
-   # Enable auto-start on boot
-   sudo systemctl enable cerberus-tor cerberus-haproxy cerberus-nginx cerberus-fortify
-   ```
-
-6. **Get your onion address**
-   ```bash
-   sudo cat /var/lib/tor/cerberus/hostname
-   ```
-
-7. **Test in Tor Browser**
-   - Open Tor Browser
-   - Navigate to your `.onion` address
-   - Solve the CAPTCHA
-   - Access granted!
+**Sprint 1** (Current): Documentation and architecture design ✅  
+**Sprint 2** (Next): Core implementation (HAProxy, Nginx, Fortify basics)  
+**Sprint 3**: Advanced features (Virtual queue, adaptive defenses)  
+**Sprint 4**: Testing, hardening, and production readiness
 
 ---
 
@@ -198,68 +137,51 @@ docker-compose exec tor cat /var/lib/tor/cerberus/hostname
 
 ---
 
-## 🛠️ Configuration
+## 🛠️ Planned Configuration
 
-### Basic Configuration (`cerberus.conf`)
+### Intended Configuration Structure
+
+The planned configuration system will use a simple INI-style format:
 
 ```ini
-# Target service
+# Example cerberus.conf (not yet implemented)
 TARGET_ONION=your-backend-onion.onion
 TARGET_PORT=80
-
-# Defense sensitivity (low, medium, high)
 DDOS_SENSITIVITY=medium
-
-# Connection limits
-MAX_CONNECTIONS=500
-CAPTCHA_TTL=300  # 5 minutes
-
-# Ports (internal only, not exposed)
-HAPROXY_PORT=10000
-NGINX_PORT=10001
-FORTIFY_PORT=10002
+MAX_CONNECTIONS=10000
+CAPTCHA_TTL=300
 ```
 
-### Advanced Tuning
+### Configuration Documentation
 
-See [HAProxy Configuration](docs/haproxy.md), [Nginx Configuration](docs/nginx.md), and [Fortify Configuration](docs/fortify.md) for detailed tuning guides.
+Detailed configuration specifications available in:
+- [HAProxy Configuration](docs/haproxy.md)
+- [Nginx Configuration](docs/nginx.md)
+- [Fortify Configuration](docs/fortify.md)
 
 ---
 
-## 🧪 Testing
+## 🧪 Planned Testing Strategy
 
-### Unit Tests
-```bash
-cd keeper
-cargo test --all-features
-```
+Comprehensive testing approach documented in [docs/ci-cd-workflows.md](docs/ci-cd-workflows.md):
 
-### Integration Tests
-```bash
-./tests/integration/test-full-pipeline.sh
-```
-
-### Load Testing
-```bash
-# Simulate 1000 concurrent connections
-./tests/load-testing/ddos-simulation.py --circuits 1000 --duration 60
-```
-
-### Tor Browser Testing
-```bash
-# Automated Tor Browser tests
-./tests/browser/test-captcha-flow.sh
-```
+- **Unit Tests**: Individual component testing with Rust's cargo test
+- **Integration Tests**: Full stack testing (Tor → HAProxy → Nginx → Fortify)
+- **Load Testing**: Simulated DDoS scenarios with multiple circuits
+- **Browser Tests**: Automated Tor Browser testing (Safest + Standard modes)
+- **Security Tests**: Penetration testing and vulnerability scanning
 
 ---
 
-## 🎯 Use Cases
+## 🎯 Intended Use Cases
 
-### Who Should Use Cerberus?
+### Who Is Cerberus Being Designed For?
+
+Once implemented, Cerberus will be intended for:
 
 ✅ **High-Value Tor Onion Services**
 - Marketplaces, forums, whistleblower platforms
-- Services under constant DDoS attacks
+- Services anticipating constant DDoS attacks
 - Privacy-critical applications requiring zero-trust architecture
 
 ✅ **Darknet Operators**
@@ -272,7 +194,7 @@ cargo test --all-features
 - Analyzing circuit-based attacks
 - Studying onion service availability under load
 
-❌ **Not Suitable For**
+❌ **Not Intended For**
 - Clearnet websites (use Cloudflare or traditional WAFs instead)
 - Low-traffic personal sites (overkill, unnecessary complexity)
 - Services requiring rich JavaScript interactions (Cerberus prioritizes NoJS compatibility)
@@ -319,32 +241,40 @@ We follow responsible disclosure and will credit researchers in our security adv
 
 ---
 
-## 📊 Performance Benchmarks
+## 📊 Performance Targets
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Concurrent Connections** | 10,000 | Production-ready defaults |
-| **CAPTCHA Generation** | <100ms | Pre-generation pool enabled |
+These are the **planned performance goals** for Cerberus once implemented:
+
+| Metric | Target | Design Rationale |
+|--------|--------|------------------|
+| **Concurrent Connections** | 10,000 | HAProxy + kernel tuning |
+| **CAPTCHA Generation** | <100ms | Pre-generation pool |
 | **CAPTCHA Verification** | <10ms | Constant-time comparison |
-| **Static Page Delivery** | <5ms | Nginx direct serve (no backend) |
+| **Static Page Delivery** | <5ms | Nginx direct serve |
 | **Circuit Ban Latency** | <50ms | HAProxy stick table update |
-| **Memory Footprint** | ~100MB | All services combined |
-| **CPU Usage (Idle)** | <5% | Single core, no traffic |
-| **CPU Usage (Attack)** | 50-80% | 1000 req/s DDoS simulation |
+| **Memory Target** | ~100MB | All services combined |
 
-*Tested on: 2 CPU cores, 2GB RAM, Debian 11*
+*Targets based on similar production systems and architectural design. Actual performance will be measured during implementation.*
 
 ---
 
 ## 🗺️ Roadmap
 
-### Sprint 1: Foundation (Current)
-- [x] Architecture design
-- [x] Documentation (HAProxy, Nginx, Fortify, Instructions)
+### Sprint 1: Foundation (✅ Complete)
+- [x] Architecture design and specification
+- [x] Complete documentation suite
+- [x] Virtual queue system design
+- [x] Dependencies audit and version matrix
+- [x] CI/CD workflow specifications
+- [x] Security guidelines and Tor best practices
+
+### Sprint 2: Core Implementation (⏳ Not Started)
+- [ ] Project structure setup (create actual folders)
 - [ ] Deployment scripts (`cerberus.sh`)
 - [ ] HAProxy configuration with circuit tracking
 - [ ] Nginx static CAPTCHA gate
-- [ ] Fortify basic CAPTCHA system
+- [ ] Fortify basic CAPTCHA system (Rust)
+- [ ] Integration testing
 
 ### Sprint 2: Intelligence
 - [ ] Persistent circuit reputation database (SQLite)
@@ -371,7 +301,7 @@ We follow responsible disclosure and will credit researchers in our security adv
 **MIT License** - Free and Open Source
 
 ```
-Copyright (c) 2026 Cerberus Project
+Copyright (c) 2025 Cerberus Project
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -404,12 +334,11 @@ SOFTWARE.
 
 ---
 
-## 📞 Contact & Community
+## 📞 Community
 
-- **Website**: [cerberus-project.onion](http://cerberus-project.onion) (coming soon)
-- **Matrix**: `#cerberus-dev:matrix.org`
-- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/cerberus/issues)
-- **Discussions**: [Community forum](https://github.com/yourusername/cerberus/discussions)
+- **GitHub**: [https://github.com/Nespartious/Cerberus](https://github.com/Nespartious/Cerberus)
+- **Issues**: [Report bugs or request features](https://github.com/Nespartious/Cerberus/issues)
+- **Discussions**: [Project discussions](https://github.com/Nespartious/Cerberus/discussions)
 
 ---
 
@@ -422,9 +351,9 @@ Cerberus is designed to protect legitimate Tor Onion Services from abuse. Users 
 ---
 
 <p align="center">
-  <strong>Defend your onion service. Deploy Cerberus.</strong>
+  <strong>Designing the future of Tor Onion Service defense.</strong>
 </p>
 
 <p align="center">
-  Made with 🛡️ for the Tor community
+  A work in progress for the Tor community 🛡️
 </p>
