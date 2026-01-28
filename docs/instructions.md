@@ -10,11 +10,12 @@ This document serves as a comprehensive guide for developing and maintaining Cer
 2. [Tor Browser Security Considerations](#tor-browser-security-considerations)
 3. [JavaScript: The Double-Edged Sword](#javascript-the-double-edged-sword)
 4. [Onion Service Specific Concerns](#onion-service-specific-concerns)
-5. [Development Workflow & Best Practices](#development-workflow--best-practices)
-6. [Testing in Tor Environments](#testing-in-tor-environments)
-7. [Security Audit Checklist](#security-audit-checklist)
-8. [Common Pitfalls & Mistakes](#common-pitfalls--mistakes)
-9. [Defensive Programming Principles](#defensive-programming-principles)
+5. [Project Roles & Responsibilities](#project-roles--responsibilities)
+6. [Development Workflow & Best Practices](#development-workflow--best-practices)
+7. [Testing in Tor Environments](#testing-in-tor-environments)
+8. [Security Audit Checklist](#security-audit-checklist)
+9. [Common Pitfalls & Mistakes](#common-pitfalls--mistakes)
+10. [Defensive Programming Principles](#defensive-programming-principles)
 
 ---
 
@@ -422,6 +423,167 @@ HiddenServicePoWQueueBurst 100
   - Accept HTTP-only (normal for onions)
   - Be aware some APIs require HTTPS (Web Crypto API, Geolocation)
   - Don't implement HTTPS (pointless overhead)
+
+---
+
+## Project Roles & Responsibilities
+
+To maintain clarity and ensure comprehensive project execution, Cerberus development follows a role-based approach. Each role represents a distinct perspective and set of responsibilities throughout the project lifecycle.
+
+### Role Definitions
+
+#### 🎯 Planner
+
+**Primary Responsibility**: Strategic design and feasibility analysis
+
+**Key Duties**:
+- Create comprehensive planning documents for new features and architectural changes
+- Research and evaluate potential alternatives and competing approaches
+- Master understanding of all aspects of the Cerberus project (architecture, security, performance, deployment)
+- Act as project guardian: ensure all plans are safe, worthwhile, and aligned with project goals
+- Perform threat modeling and risk assessment for proposed changes
+- Identify dependencies, integration points, and potential conflicts with existing systems
+- Document design decisions with clear rationale and trade-off analysis
+
+**Outputs**:
+- Planning documents (e.g., `xmr-priority-system.md`, `threat-dial-system.md`)
+- Feasibility assessments with recommendations (PROCEED/DEFER/REJECT)
+- Alternative solution comparisons
+- Security and performance impact analyses
+
+**Quality Standards**:
+- All plans must include security considerations
+- Must identify risks and provide mitigation strategies
+- Should include implementation complexity estimates
+- Must verify alignment with zero-JavaScript policy and Tor best practices
+
+**Example Work**: When a new feature idea emerges (e.g., "XMR payment priority"), the Planner researches Monero integration, evaluates darknet market fit, identifies security risks (hot wallet, double-spend), and produces a detailed planning document with PROCEED/DEFER recommendation.
+
+---
+
+#### 📋 Coach
+
+**Primary Responsibility**: Sprint planning and implementation guidance
+
+**Key Duties**:
+- Transform planning documents into actionable sprint execution plans
+- Review current codebase to understand existing implementations and integration points
+- Create precise, step-by-step implementation guides with zero assumptions or placeholder information
+- Define clear phases, milestones, and acceptance criteria for each sprint
+- Identify required files, functions, configurations, and dependencies
+- Sequence tasks to minimize blocking dependencies
+- Provide code structure recommendations and integration patterns
+- Ensure sprint plans are complete and executable by developers
+
+**Outputs**:
+- Sprint documents with detailed task breakdowns
+- Implementation checklists with specific file paths and function signatures
+- Dependency installation commands and version requirements
+- Configuration templates with exact parameter values
+- Testing strategies with specific test cases
+
+**Quality Standards**:
+- No fake information or guessed details (verify against actual code)
+- All file paths must be real (check if files exist, create if needed)
+- Dependencies must specify exact versions and installation methods
+- Each task must have clear acceptance criteria (how to verify completion)
+- Must include rollback plans for risky changes
+
+**Example Work**: Taking the "Threat Dial System" planning doc, the Coach reviews HAProxy/Nginx/Fortify code, identifies exactly which configuration parameters need multiplier logic, specifies the Rust functions to implement (`calculate_multiplier()`, `apply_dial_adjustments()`), and creates a Sprint 2 document with 15 specific tasks, each with file paths, expected changes, and test commands.
+
+---
+
+#### 📚 Librarian
+
+**Primary Responsibility**: Documentation maintenance and verification
+
+**Key Duties**:
+- Review completed sprints and verify all planned features were implemented
+- Audit code changes to ensure they match documentation claims
+- Update existing documentation to reflect new features, APIs, and configurations
+- Create or reorganize documentation for clarity and discoverability
+- Maintain consistency across all documentation (terminology, formatting, cross-references)
+- Ensure examples and code snippets in docs are accurate and tested
+- Archive outdated documentation and update deprecation notices
+- Verify all links, references, and citations are valid
+
+**Outputs**:
+- Updated technical documentation (architecture, API, configuration guides)
+- Verified README.md with accurate feature lists and status
+- Organized docs/ directory with clear navigation
+- Changelog entries for each sprint
+- Deprecated feature notices and migration guides
+
+**Quality Standards**:
+- All documentation must be verified against actual code (no stale docs)
+- Code examples must be tested and executable
+- Must maintain project-wide consistency (e.g., "Circuit ID" not "circuit-id", "Fortify" not "fortify-app")
+- Must update Table of Contents and cross-references when adding new sections
+- Must identify and fix broken links or outdated references
+
+**Example Work**: After Sprint 2 completes Threat Dial implementation, the Librarian verifies the feature exists (checks for `THREAT_DIAL_POSITION` in cerberus.conf, `calculate_multiplier()` function in Fortify), updates the main README to include "Threat Dial" in features list, creates user-facing documentation (`docs/threat-dial-usage.md`), and updates `docs/fortify.md` to document the new Admin API endpoints.
+
+---
+
+### Role Interaction Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  New Feature Idea / User Request                                │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  🎯 PLANNER                                                      │
+│  • Research alternatives                                         │
+│  • Assess feasibility and risks                                 │
+│  • Create planning document                                     │
+│  • Recommend: PROCEED / DEFER / REJECT                          │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓ (If PROCEED)
+┌─────────────────────────────────────────────────────────────────┐
+│  📋 COACH                                                        │
+│  • Review planning doc + current codebase                       │
+│  • Create sprint execution plan                                 │
+│  • Break into phases with specific tasks                        │
+│  • Define acceptance criteria and testing strategy              │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  IMPLEMENTATION (Developer / AI Agent)                           │
+│  • Execute sprint tasks                                          │
+│  • Write code, tests, configs                                   │
+│  • Commit changes with clear messages                           │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  📚 LIBRARIAN                                                    │
+│  • Verify implementation matches plan                           │
+│  • Audit code for accuracy                                      │
+│  • Update documentation (README, technical docs, API)           │
+│  • Maintain consistency and fix stale references                │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+                     Feature Complete
+```
+
+---
+
+### Role Separation Principles
+
+**Why separate roles?**
+
+1. **Clarity of Purpose**: Each role has a single, well-defined responsibility
+2. **Quality Assurance**: Planner catches bad ideas early, Librarian catches documentation drift
+3. **Efficiency**: Coach can focus on executable plans without worrying about documentation maintenance
+4. **Verification**: Librarian acts as independent audit (did we actually build what we planned?)
+5. **Scalability**: Roles can be distributed across team members or AI agents
+
+**Role Boundaries**:
+- ❌ Planner does NOT write sprint tasks (that's Coach's job)
+- ❌ Coach does NOT implement features (focuses on planning only)
+- ❌ Librarian does NOT design features (documents what exists, not what could be)
+
+**Exception**: Small changes (typo fixes, minor doc updates) may skip formal role workflow.
 
 ---
 
