@@ -4,122 +4,257 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tor](https://img.shields.io/badge/Tor-V3%20Onion-7D4698.svg)](https://www.torproject.org/)
-[![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![Status](https://img.shields.io/badge/Status-Planning%20%2F%20Design-yellow.svg)](docs/scaffold.md)
+[![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange.svg)](https://www.rust-lang.org/)
+[![Status](https://img.shields.io/badge/Status-Phase%201%20Planning-yellow.svg)](docs/0001-project-scaffold.md)
 
-> **⚠️ PROJECT STATUS**: Cerberus is currently in the **design and documentation phase**. The architecture, specifications, and implementation plans are complete, but the actual code has not been written yet. This README describes the intended design and capabilities.
+> **⚠️ PROJECT STATUS**: Cerberus is in the **planning and design phase**. All architecture and specifications are documented. Code implementation begins with Phase 1.
 
 ---
 
 ## 🎯 What is Cerberus?
 
-Cerberus is a specialized, defense-in-depth ingress architecture designed exclusively for **Tor Onion Services** operating in hostile environments. Unlike traditional web application firewalls, Cerberus assumes DDoS attacks, deanonymization attempts, and automated abuse are the norm—not the exception.
+Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively for **Tor Onion Services** operating in hostile environments. It provides three layers of protection between the Tor network and your backend service.
 
-Named after the three-headed guardian of the underworld, Cerberus provides **three layers of protection**:
+### Core Design Philosophy: Human-Cost Asymmetry
 
-1. **HAProxy (Layer 1 - The Shield)**: Connection management, circuit reputation tracking, and aggressive rate limiting
-2. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, and buffer attack prevention  
-3. **Fortify (Layer 3 - The Keeper)**: Rust-based application logic for CAPTCHA verification, threat analysis, and adaptive defense
+> **Make the cost of being wrong trivial for humans and expensive for bots.**
 
-### 🔒 Built for the Dark Web
-- **Tor-Native**: Leverages Tor's PROXY protocol for per-circuit tracking and reputation scoring
-- **PoW-Enabled**: Integrates with Tor's Proof-of-Work defenses (HiddenServicePoWDefensesEnabled)
-- **Zero-Trust**: Works without JavaScript, cookies, or persistent client state (Tor Browser Safest Mode compatible)
-- **Privacy-First**: No IP logging, no user tracking, no fingerprinting—just behavior-based defense
+- **Humans see nothing**: Instant access, no CAPTCHAs, no delays
+- **Bots drown**: Exponential penalties, escalating CAPTCHAs, compounding timeouts
+
+**Real-world impact**: A bot needs **38+ days** to make 10,000 requests. A human needs **seconds**.
+
+### The Three Heads
+
+1. **HAProxy (Layer 1 - The Shield)**: Connection management, circuit reputation tracking, stick tables
+2. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing  
+3. **Fortify (Layer 3 - The Keeper)**: Rust application for CAPTCHA verification, threat analysis, adaptive defense
+
+### Built for Tor
+- **Tor-Native**: Leverages Tor's PROXY protocol for per-circuit tracking
+- **PoW-Enabled**: Integrates with Tor's Proof-of-Work defenses
+- **Zero JavaScript**: Works in Tor Browser Safest Mode (100% server-side)
+- **Privacy-First**: No IP logging, no fingerprinting—behavior-based defense only
 
 ---
 
-## ✨ Planned Features
+## 📋 Implementation Phases
 
-### 🚀 Performance & Scalability Goals
-- **10,000 concurrent connections** target with optimized configuration
-- **Static CAPTCHA gate** design to offload traffic from application layer
-- **Async Rust backend** (Tokio) planned for non-blocking I/O
-- **Fast CAPTCHA generation** with pre-generation pool architecture
-- **Virtual queue system** to prevent server resource exhaustion during attacks
+### 🚀 Phase 1: Minimal Viable Proxy (MVP)
+> **Goal**: Working reverse proxy that serves a static "Hello World" page through all three layers.
 
-### 🛡️ Advanced DDoS Mitigation
-- **Per-Circuit Rate Limiting**: Track and throttle Tor circuits independently (not IPs)
-- **Virtual Queue System**: Browser-side waiting room with token-based priority (offloads queue burden from server)
-- **Stick Table Reputation**: VIP promotion for validated users, instant banning for abusers
-- **Adaptive Thresholds**: Dynamic difficulty scaling based on attack severity
-- **Slowloris Protection**: Aggressive timeouts at HAProxy and Nginx layers
+- HAProxy → Nginx → Fortify → Static HTML response
+- Verify traffic flows through the complete stack
+- No CAPTCHA, no threat detection—just connectivity proof
+- **Exit Criteria**: Tor Browser can reach `hello.html` through your .onion
 
-### 🎯 Tor-Specific Defenses
-- **Circuit ID Tracking**: Identify and ban malicious circuits without breaking Tor anonymity
-- **Vanguards Integration**: Protect against guard discovery and circuit correlation attacks
-- **Time-Limited Bans**: Circuits banned for 30-60 minutes (not permanent, respecting Tor's rotation)
-- **Introduction Point Protection**: Defend against intro point flooding and enumeration
+### 🔧 Phase 2: HAProxy Hardening
+> **Goal**: Connection management, circuit tracking, and stick tables.
 
-### 🔐 Security Hardening
-- **Strict CSP Headers**: Block XSS, clickjacking, and data exfiltration
-- **Header Scrubbing**: Remove fingerprinting vectors (User-Agent, Accept-Language, etc.)
-- **Zero JavaScript**: Fully functional in Tor Browser Safest Mode (100% server-side rendering)
-- **Constant-Time Comparisons**: Prevent timing attacks on CAPTCHA validation
-- **Least Privilege**: Separate service users, chroot jails, file permission hardening
+- Parse Tor PROXY protocol for circuit IDs
+- Implement rate limiting with stick tables
+- Add connection limits per circuit
+- Configure slowloris protection (aggressive timeouts)
+- **Exit Criteria**: HAProxy blocks flooding from single circuit
+
+### 🛡️ Phase 3: Nginx Hardening
+> **Goal**: Protocol sanitization and security headers.
+
+- Header scrubbing (remove fingerprinting vectors)
+- Strict CSP and security headers
+- Body size limits and timeout tuning
+- Static file serving optimization
+- **Exit Criteria**: No leaky headers, clean protocol handling
+
+### 🎯 Phase 4: Basic CAPTCHA System
+> **Goal**: First working CAPTCHA gate in Fortify.
+
+- **Distorted Text CAPTCHA** (single variant)
+- Pre-generation pool for fast response
+- Constant-time verification
+- Basic session token management
+- **Exit Criteria**: CAPTCHA blocks automated requests, passes Tor Browser
+
+### 📊 Phase 5: Threat Dial System
+> **Goal**: Dynamic defense intensity (1-10 levels).
+
+- Implement threat level state machine
+- Automatic escalation based on load metrics
+- Per-level CAPTCHA difficulty adjustment
+- HAProxy rate limit integration
+- **Exit Criteria**: System auto-escalates during simulated attack
+
+### 🧩 Phase 6: Advanced CAPTCHA System
+> **Goal**: All 6 CAPTCHA variants with Human-Cost Asymmetry.
+
+| Variant | Description |
+|---------|-------------|
+| **Distorted Text** | Warped text with noise overlays |
+| **Object Recognition** | "Click all images containing X" |
+| **Pattern Completion** | "Which image completes this pattern?" |
+| **Color-Text Mismatch** | Color names in wrong colors |
+| **PoET (Proof-of-Elapsed-Time)** | Minimum viewing time (4-8 seconds) |
+| **Interaction Puzzles** | Contextual memory tests |
+
+- Behavioral profiling and soft-lock escalation
+- Multi-CAPTCHA chains for suspicious actors
+- **Exit Criteria**: Bots need 38+ days for 10k requests
+
+### ⏳ Phase 7: Virtual Queue System
+> **Goal**: Browser-side waiting room with priority lanes.
+
+- Three lanes: VIP (validated), PoW (working), Normal (waiting)
+- Client-side PoW puzzle generation
+- Server-side PoW verification
+- Token-based position management
+- **Exit Criteria**: Queue absorbs 10k connection burst gracefully
+
+### 🧠 Phase 8: Behavioral Profiling
+> **Goal**: Automated threat classification without fingerprinting.
+
+- Request timing pattern analysis
+- Endpoint diversity scoring
+- Session behavior tracking
+- Soft-lock escalation chains
+- **Exit Criteria**: Bot patterns detected in <5 requests
+
+### 📈 Phase 9: Monitoring & Admin UI
+> **Goal**: Grafana dashboards and operator controls.
+
+- Prometheus metrics export
+- Pre-built Grafana dashboards
+- Remote Grafana streaming (optional VPS)
+- Admin panel for manual overrides
+- **Exit Criteria**: Full visibility into system state
+
+### 🌐 Phase 10: Cluster System
+> **Goal**: Multi-node deployment with shared state.
+
+- WireGuard peer-to-peer mesh
+- Redis Cluster for shared stick tables
+- Each node fully independent (no leader)
+- Private network: 10.100.0.0/24
+- **Exit Criteria**: 3-node cluster handles failover
+
+### 💰 Phase 11: XMR Priority System
+> **Goal**: Monero micropayments for queue fast-pass.
+
+- Monero wallet integration
+- Payment verification via RPC
+- VIP lane promotion on payment
+- Rate-limited to prevent abuse
+- **Exit Criteria**: XMR payment grants instant access
+
+### 🔒 Phase 12: Production Hardening
+> **Goal**: Security audit and production readiness.
+
+- External security audit
+- Load testing (10k+ concurrent)
+- Docker/systemd deployment
+- Ansible automation playbooks
+- **Exit Criteria**: Production-ready v1.0 release
+
+---
+
+## ✨ Feature Summary
+
+| Category | Feature | Phase | Status |
+|----------|---------|-------|--------|
+| **Core Proxy** | HAProxy → Nginx → Fortify chain | 1 | 📋 Planned |
+| **Core Proxy** | Circuit ID tracking (PROXY protocol) | 2 | 📋 Planned |
+| **Core Proxy** | Stick table reputation | 2 | 📋 Planned |
+| **Security** | Header scrubbing & CSP | 3 | 📋 Planned |
+| **CAPTCHA** | Distorted Text variant | 4 | 📋 Planned |
+| **CAPTCHA** | 6 AI-resistant variants | 6 | 📋 Planned |
+| **CAPTCHA** | Human-Cost Asymmetry design | 6 | 📋 Planned |
+| **Defense** | Threat Dial (1-10 levels) | 5 | 📋 Planned |
+| **Defense** | Behavioral profiling | 8 | 📋 Planned |
+| **Queue** | Virtual Queue (3 lanes) | 7 | 📋 Planned |
+| **Queue** | Client-side PoW | 7 | 📋 Planned |
+| **Monitoring** | Grafana dashboards | 9 | 📋 Planned |
+| **Monitoring** | Remote streaming (VPS) | 9 | 📋 Planned |
+| **Cluster** | WireGuard P2P mesh | 10 | 📋 Planned |
+| **Cluster** | Redis Cluster state sync | 10 | 📋 Planned |
+| **Premium** | XMR micropayments | 11 | 📋 Planned |
 
 ---
 
 ## 🏗️ Architecture Overview
 
 ```
-  The Internet
-       ↓
-   Tor Network (3 hops)
-       ↓
-┌──────────────────────┐
-│   Tor Daemon (PoW)   │ ← Proof of Work, Vanguards, Circuit IDs
-└──────────────────────┘
-       ↓ (127.0.0.1:10000)
-┌──────────────────────┐
-│  HAProxy (Layer 1)   │ ← Connection limits, Stick tables, Rate limiting
-└──────────────────────┘
-       ↓ (127.0.0.1:10001)
-┌──────────────────────┐
-│   Nginx (Layer 2)    │ ← Static CAPTCHA, Header scrubbing, Timeouts
-└──────────────────────┘
-       ↓ (127.0.0.1:10002)
-┌──────────────────────┐
-│  Fortify (Layer 3)   │ ← CAPTCHA verification, Reputation management
-└──────────────────────┘
-       ↓
-  Target Service / Backend
+┌─────────────────────────────────────────────────────────────────┐
+│                         The Internet                            │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    Tor Network (3 hops)                         │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│   Tor Daemon                                                    │
+│   • Proof-of-Work enabled (HiddenServicePoWDefensesEnabled)     │
+│   • Vanguards protection                                        │
+│   • PROXY protocol (circuit IDs → downstream)                   │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓ (127.0.0.1:10000)
+┌─────────────────────────────────────────────────────────────────┐
+│   Layer 1: HAProxy (The Shield)                                 │
+│   • Connection limits & stick tables                            │
+│   • Circuit reputation tracking                                 │
+│   • Rate limiting & slowloris protection                        │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓ (127.0.0.1:10001)
+┌─────────────────────────────────────────────────────────────────┐
+│   Layer 2: Nginx (The Filter)                                   │
+│   • Static CAPTCHA delivery                                     │
+│   • Header scrubbing & CSP                                      │
+│   • Protocol sanitization                                       │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓ (127.0.0.1:10002)
+┌─────────────────────────────────────────────────────────────────┐
+│   Layer 3: Fortify (The Keeper)                                 │
+│   • CAPTCHA generation & verification                           │
+│   • Threat Dial control                                         │
+│   • Behavioral profiling                                        │
+│   • Session management                                          │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                     Target Backend Service                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Defense in Depth**: Each layer handles different attack vectors. Attackers must bypass all three layers to reach your application.
+**Defense in Depth**: Attackers must bypass all three layers. Each layer handles different attack vectors independently.
 
 ---
 
 ## 🚀 Getting Started
 
-### Current Status: Documentation Phase
+### Current Status: Phase 1 Planning
 
-Cerberus is currently in the **design and planning phase**. The complete architecture and specifications are documented, but implementation has not begun.
+All architecture and specifications are **complete**. Implementation begins with Phase 1: Minimal Viable Proxy.
 
-### Planned Deployment Environments
+### System Requirements
 
-**Target Platforms:**
-- **Ubuntu 22.04 LTS or 24.04 LTS** (Primary target)
-- **Debian 11 (Bullseye) or 12 (Bookworm)** (Primary target)
-- **Docker** (Planned containerized deployment)
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| **OS** | Ubuntu 22.04 / Debian 12 | Primary targets |
+| **Tor** | 0.4.8+ | PoW support |
+| **HAProxy** | 2.8+ LTS | Connection management |
+| **Nginx** | 1.26+ | Static delivery |
+| **Rust** | 1.82+ | Fortify application |
+| **RAM** | 2GB (4GB rec.) | All services |
+| **CPU** | 2 cores (4 rec.) | Concurrent handling |
 
-**Planned System Requirements:**
-- **Tor**: 0.4.8+ (for PoW support)
-- **HAProxy**: 2.8+ LTS
-- **Nginx**: 1.26+
-- **Rust**: 1.82+ (for Fortify)
-- **RAM**: 2GB minimum (4GB recommended)
-- **CPU**: 2 cores minimum (4 cores recommended)
-- **Disk**: 10GB minimum
+### Quick Start (Coming Soon)
 
-### Implementation Roadmap
-
-See [docs/scaffold.md](docs/scaffold.md) for the complete folder structure and [docs/CERBERUS_MASTER_ARCH.md](docs/CERBERUS_MASTER_ARCH.md) for architecture details.
-
-**Sprint 1** (Current): Documentation and architecture design ✅  
-**Sprint 2** (Next): Core implementation (HAProxy, Nginx, Fortify basics)  
-**Sprint 3**: Advanced features (Virtual queue, adaptive defenses)  
-**Sprint 4**: Testing, hardening, and production readiness
+```bash
+# Phase 1 implementation will provide:
+git clone https://github.com/Nespartious/Cerberus.git
+cd Cerberus
+./deploy/cerberus.sh install
+./deploy/cerberus.sh start
+```
 
 ---
 
@@ -155,67 +290,18 @@ See [docs/scaffold.md](docs/scaffold.md) for the complete folder structure and [
 
 ---
 
-## 🛠️ Planned Configuration
+## 🎯 Target Use Cases
 
-### Intended Configuration Structure
+### ✅ Designed For
+- **High-Value Tor Onion Services** (marketplaces, forums, whistleblower platforms)
+- **Services expecting constant DDoS** (circuit-based defense, not IP-based)
+- **Privacy-first operations** (no fingerprinting, no JavaScript requirements)
+- **Security researchers** (testing Tor infrastructure defenses)
 
-The planned configuration system will use a simple INI-style format:
-
-```ini
-# Example cerberus.conf (not yet implemented)
-TARGET_ONION=your-backend-onion.onion
-TARGET_PORT=80
-DDOS_SENSITIVITY=medium
-MAX_CONNECTIONS=10000
-CAPTCHA_TTL=300
-```
-
-### Configuration Documentation
-
-Detailed configuration specifications available in:
-- [HAProxy Configuration](docs/haproxy.md)
-- [Nginx Configuration](docs/nginx.md)
-- [Fortify Configuration](docs/fortify.md)
-
----
-
-## 🧪 Planned Testing Strategy
-
-Comprehensive testing approach documented in [docs/ci-cd-workflows.md](docs/ci-cd-workflows.md):
-
-- **Unit Tests**: Individual component testing with Rust's cargo test
-- **Integration Tests**: Full stack testing (Tor → HAProxy → Nginx → Fortify)
-- **Load Testing**: Simulated DDoS scenarios with multiple circuits
-- **Browser Tests**: Automated Tor Browser testing (Safest + Standard modes)
-- **Security Tests**: Penetration testing and vulnerability scanning
-
----
-
-## 🎯 Intended Use Cases
-
-### Who Is Cerberus Being Designed For?
-
-Once implemented, Cerberus will be intended for:
-
-✅ **High-Value Tor Onion Services**
-- Marketplaces, forums, whistleblower platforms
-- Services anticipating constant DDoS attacks
-- Privacy-critical applications requiring zero-trust architecture
-
-✅ **Darknet Operators**
-- Need circuit-based rate limiting (not IP-based)
-- Require CAPTCHA without JavaScript (Safest Mode support)
-- Want defense-in-depth without sacrificing anonymity
-
-✅ **Security Researchers**
-- Testing Tor infrastructure defenses
-- Analyzing circuit-based attacks
-- Studying onion service availability under load
-
-❌ **Not Intended For**
-- Clearnet websites (use Cloudflare or traditional WAFs instead)
-- Low-traffic personal sites (overkill, unnecessary complexity)
-- Services requiring rich JavaScript interactions (Cerberus prioritizes NoJS compatibility)
+### ❌ Not For
+- Clearnet websites (use Cloudflare instead)
+- Low-traffic personal sites (overkill)
+- Rich JavaScript applications (Cerberus prioritizes NoJS)
 
 ---
 
@@ -261,56 +347,48 @@ We follow responsible disclosure and will credit researchers in our security adv
 
 ## 📊 Performance Targets
 
-These are the **planned performance goals** for Cerberus once implemented:
-
-| Metric | Target | Design Rationale |
-|--------|--------|------------------|
-| **Concurrent Connections** | 10,000 | HAProxy + kernel tuning |
-| **CAPTCHA Generation** | <100ms | Pre-generation pool |
-| **CAPTCHA Verification** | <10ms | Constant-time comparison |
-| **Static Page Delivery** | <5ms | Nginx direct serve |
-| **Circuit Ban Latency** | <50ms | HAProxy stick table update |
-| **Memory Target** | ~100MB | All services combined |
-
-*Targets based on similar production systems and architectural design. Actual performance will be measured during implementation.*
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Concurrent Connections | 10,000 | HAProxy + kernel tuning |
+| CAPTCHA Generation | <100ms | Pre-generation pool |
+| CAPTCHA Verification | <10ms | Constant-time comparison |
+| Static Page Delivery | <5ms | Nginx direct serve |
+| Circuit Ban Latency | <50ms | Stick table update |
+| Memory (all services) | ~100MB | Lean deployment |
 
 ---
 
 ## 🗺️ Roadmap
 
-### Sprint 1: Foundation (✅ Complete)
-- [x] Architecture design and specification
-- [x] Complete documentation suite
-- [x] Virtual queue system design
-- [x] Dependencies audit and version matrix
+### ✅ Planning Complete
+- [x] Master architecture design
+- [x] 16 planning documents
+- [x] User stories for all features
 - [x] CI/CD workflow specifications
 - [x] Security guidelines and Tor best practices
 
-### Sprint 2: Core Implementation (⏳ Not Started)
-- [ ] Project structure setup (create actual folders)
-- [ ] Deployment scripts (`cerberus.sh`)
-- [ ] HAProxy configuration with circuit tracking
-- [ ] Nginx static CAPTCHA gate
-- [ ] Fortify basic CAPTCHA system (Rust)
-- [ ] Integration testing
+### ⏳ Phase 1: MVP (Next)
+- [ ] Project structure setup
+- [ ] HAProxy basic configuration
+- [ ] Nginx pass-through
+- [ ] Fortify "Hello World" response
+- [ ] End-to-end connectivity test
 
-### Sprint 2: Intelligence
-- [ ] Persistent circuit reputation database (SQLite)
-- [ ] Behavioral analysis (timing patterns, endpoint diversity)
-- [ ] Adaptive CAPTCHA difficulty
-- [ ] Admin dashboard (web UI for monitoring)
+### 📋 Phases 2-6: Core Defense
+- [ ] Circuit tracking and stick tables
+- [ ] Header scrubbing and CSP
+- [ ] CAPTCHA system (all 6 variants)
+- [ ] Threat Dial implementation
 
-### Sprint 3: Advanced Defense
-- [ ] Machine learning anomaly detection
-- [ ] Circuit clustering (Sybil attack detection)
-- [ ] Swarm coordination (multi-node Cerberus)
-- [ ] hCaptcha/reCAPTCHA integration (optional)
+### 📋 Phases 7-9: Advanced Features
+- [ ] Virtual Queue with PoW
+- [ ] Behavioral profiling
+- [ ] Monitoring dashboards
 
-### Sprint 4: Production Readiness
-- [ ] Security audit (external firm)
-- [ ] Load testing (10k+ concurrent connections)
-- [ ] Docker/Kubernetes deployment
-- [ ] Ansible playbooks for automated deployment
+### 📋 Phases 10-12: Scale & Ship
+- [ ] WireGuard cluster mesh
+- [ ] XMR priority payments
+- [ ] Security audit and v1.0 release
 
 ---
 
