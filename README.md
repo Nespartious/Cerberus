@@ -19,8 +19,8 @@ Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively f
 
 > **Make the cost of being wrong trivial for humans and expensive for bots.**
 
-- **Humans see nothing**: Instant access, no CAPTCHAs, no delays
-- **Bots drown**: Exponential penalties, escalating CAPTCHAs, compounding timeouts
+- **Humans breeze through**: One easy CAPTCHA, quick solve, mistakes forgiven
+- **Bots drown**: Failed attempts trigger escalation → multi-CAPTCHA chains → soft-locks → bans
 
 **Real-world impact**: A bot needs **38+ days** to make 10,000 requests. A human needs **seconds**.
 
