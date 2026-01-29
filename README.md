@@ -25,16 +25,17 @@ Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively f
 
 **Real-world impact**: A bot needs **38+ days** to make 10,000 requests. A human needs **seconds**.
 
-### The Four Heads (Defense Layers)
+### Cerberus Defense Stack (by Network Layer)
 
-0. **XDP/eBPF (Layer 0 - The Flood Shield)**: Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
-1. **TC eBPF (Layer 0.5 - Flow Shaper)**: Stateful relay-aware flow shaping, latency/delay, probabilistic drops, skb marks for HAProxy
-2. **Kernel TCP Policy**: SYN cookies, backlog caps, aggressive cleanup, timeouts
-3. **HAProxy (Layer 1 - The Shield, TCP/HTTP)**: Connection management, circuit reputation tracking, stick tables, HTTP protocol correctness, header limits
-4. **Protocol Normalization**: Path/header normalization, CRLF, canonical Host, parser differential defense (HAProxy/Nginx or Rust filter)
-5. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing
-6. **Nginx ↔ Fortify Isolation**: UNIX socket, strict timeouts, memory caps, queue governor
-7. **Fortify (Layer 3 - The Keeper)**: Rust application for CAPTCHA verification, threat analysis, adaptive defense
+**L2 (XDP/eBPF - Kernel Shield):** Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
+**L3/L4 (TC eBPF - Flow Shaper):** Stateful relay-aware flow shaping, latency/delay, probabilistic drops, skb marks for L4
+**L4 (Kernel TCP Policy):** SYN cookies, backlog caps, aggressive cleanup, timeouts
+**L4 (HAProxy - Connection Governor):** Connection management, circuit reputation tracking, stick tables, HTTP protocol correctness, header limits
+**L7 (Protocol Normalization):** Path/header normalization, CRLF, canonical Host, parser differential defense (HAProxy/Nginx or Rust filter)
+**L7 (Nginx - Gatekeeper):** Protocol sanitization, static CAPTCHA delivery, header scrubbing, session/cookie check
+**L7 (Nginx ↔ Fortify Isolation):** UNIX socket, strict timeouts, memory caps, queue governor
+**L7+ (Fortify - Logic & CAPTCHA):** Rust application for CAPTCHA verification, threat analysis, adaptive defense, RAM pool (ammo box), queue, passport protocol
+> **Backend .onion secrecy:** Only Cerberus nodes know the real backend .onion address, and the backend only allows connections from Cerberus nodes.
 
 ### Built for Tor
 - **Tor-Native**: Leverages Tor's PROXY protocol for per-circuit tracking

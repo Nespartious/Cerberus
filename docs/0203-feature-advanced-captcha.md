@@ -1,3 +1,24 @@
+# L7+ CAPTCHA System (RAM Pool / Ammo Box)
+
+- RAM Pool: Holds 50,000–100,000 pre-generated CAPTCHAs in memory for instant access.
+- Zero-Allocation: Pops a CAPTCHA from the stack in nanoseconds when a user requests one.
+- The "Ammo Box":
+  - Periodically and on safe triggers (not just shutdown), dumps images/answers to a raw binary file (ammo.bin).
+  - On Startup: Loads ammo.bin instantly into RAM and re-hashes answers with a fresh session key.
+- Result: System is ready to defend < 1 second after reboot.
+
+# L7+ Queue System (No-JS)
+
+- Static Page: A lightweight HTML file served from RAM.
+- Mechanism: Uses <meta http-equiv="refresh" content="15"> to auto-reload (standardized for all queue pages).
+- Goal: Keeps the user's browser waiting without holding a server socket open.
+
+# Backend .onion secrecy
+
+Only Cerberus nodes know the real backend .onion address, and the backend only allows connections from Cerberus nodes.
+
+---
+
 # 📖 User Story
 
 **As a service operator under sophisticated bot attacks**  
@@ -1184,7 +1205,7 @@ At highest threat levels, require **2-3 CAPTCHAs in sequence**:
 - Pre-load fonts into memory at startup (avoid disk I/O per request)
 - Use image generation libraries with SIMD optimizations (e.g., `image` crate with AVX2)
 - Cache random noise patterns (generate 100 noise layers at startup, rotate usage)
-- Parallel generation: if multi-CAPTCHA required, generate both simultaneously
+- Parallel generation: if multi-CAPTCHAs required, generate both simultaneously
 
 ---
 
