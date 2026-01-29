@@ -27,9 +27,13 @@ Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively f
 ### The Four Heads (Defense Layers)
 
 0. **XDP/eBPF (Layer 0 - The Flood Shield)**: Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
-1. **HAProxy (Layer 1 - The Shield)**: Connection management, circuit reputation tracking, stick tables
-2. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing
-3. **Fortify (Layer 3 - The Keeper)**: Rust application for CAPTCHA verification, threat analysis, adaptive defense
+1. **TC eBPF (Layer 0.5 - Flow Shaper)**: Stateful relay-aware flow shaping, latency/delay, probabilistic drops, skb marks for HAProxy
+2. **Kernel TCP Policy**: SYN cookies, backlog caps, aggressive cleanup, timeouts
+3. **HAProxy (Layer 1 - The Shield, TCP/HTTP)**: Connection management, circuit reputation tracking, stick tables, HTTP protocol correctness, header limits
+4. **Protocol Normalization**: Path/header normalization, CRLF, canonical Host, parser differential defense (HAProxy/Nginx or Rust filter)
+5. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing
+6. **Nginx ↔ Fortify Isolation**: UNIX socket, strict timeouts, memory caps, queue governor
+7. **Fortify (Layer 3 - The Keeper)**: Rust application for CAPTCHA verification, threat analysis, adaptive defense
 
 ### Built for Tor
 - **Tor-Native**: Leverages Tor's PROXY protocol for per-circuit tracking
@@ -290,9 +294,49 @@ cd Cerberus
 
 **Defense Layers (0100-series):**
 - **[XDP/eBPF Layer](docs/0103-layer0-xdp.md)**: NIC-level flood shield, per-relay rate limiting
+- **[TC eBPF Flow Shaping](docs/0104-tc-ebpf-flow-shaping.md)**: Stateful relay-aware flow shaping, latency/delay, skb marks
+- **[Kernel TCP Tuning](docs/0105-kernel-tcp-tuning.md)**: SYN cookies, backlog caps, timeouts
 - **[HAProxy Layer](docs/0100-layer1-haproxy.md)**: Connection management and circuit tracking
+- **[HAProxy HTTP Gate](docs/0106-haproxy-http-gate.md)**: HTTP protocol correctness, header limits
+- **[Protocol Normalization](docs/0107-protocol-normalization.md)**: Path/header normalization, CRLF, canonical Host
 - **[Nginx Layer](docs/0101-layer2-nginx.md)**: Protocol sanitization and static delivery
+- **[Nginx ↔ Fortify Isolation](docs/0108-nginx-fortify-isolation.md)**: UNIX socket, timeouts, memory caps, queue governor
 - **[Fortify Layer](docs/0102-layer3-fortify.md)**: Rust application logic and CAPTCHA system
+**Security & Threat Modeling (0200-series):**
+- **[Threat Model](docs/0204-threat-model.md)**: Practical and STRIDE threat models for Cerberus
+- **[Attack Kill Table](docs/0205-attack-kill-table.md)**: What dies at which layer, mapped to Cerberus stack
+---
+
+## 🛡️ Attack Kill Table (Summary)
+
+See [docs/0205-attack-kill-table.md](docs/0205-attack-kill-table.md) for the full table.
+
+| Attack Type         | XDP | TC eBPF | Kernel TCP | HAProxy | Nginx | Fortify |
+|---------------------|-----|---------|------------|---------|-------|---------|
+| Packet flood        | ✅  | —       | —          | —       | —     | —       |
+| SYN flood           | ✅  | ✅      | ✅         | —       | —     | —       |
+| TCP exhaustion      | —   | ✅      | ✅         | ✅      | —     | —       |
+| Connection churn    | —   | ✅      | —          | ✅      | —     | —       |
+| Slowloris           | —   | —       | —          | ✅      | ✅    | —       |
+| HTTP floods         | —   | —       | —          | ✅      | ✅    | —       |
+| Malformed HTTP      | —   | —       | —          | —       | ✅    | —       |
+| CAPTCHA bypass      | —   | —       | —          | —       | —     | ✅      |
+| Bot navigation      | —   | —       | —          | —       | —     | ✅      |
+| CAPTCHA farms       | —   | —       | —          | —       | —     | ⚠️      |
+| Human users         | ❌  | ❌      | ❌         | ❌      | ❌    | ❌      |
+
+Legend: ✅ = attack dies here, ⚠️ = attack slowed, ❌ = allowed, — = not relevant
+
+---
+
+## 🔒 Threat Model (Summary)
+
+See [docs/0204-threat-model.md](docs/0204-threat-model.md) for both practical and STRIDE threat models.
+
+**Assets:** Backend onion service, host CPU/memory, Tor intro capacity, human access
+**Adversaries:** Script kiddies, botnets, Tor-aware attackers, well-funded adversaries
+**Trust Boundaries:** Untrusted → XDP → TC eBPF → Kernel TCP → HAProxy → Nginx → Fortify → Backend
+**Design Invariants:** No layer assumes previous succeeded; each layer validates, caps, fails closed
 
 **Defense Features (0200-series):**
 - **[Virtual Queue System](docs/0200-feature-virtual-queue.md)**: Browser-side waiting room with PoW priority
