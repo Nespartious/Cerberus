@@ -13,7 +13,7 @@
 
 ## 🎯 What is Cerberus?
 
-Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively for **Tor Onion Services** operating in hostile environments. It provides three layers of protection between the Tor network and your backend service.
+Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively for **Tor Onion Services** operating in hostile environments. It provides **four layers of protection** between the Tor network and your backend service, starting with a Layer 0 XDP/eBPF flood shield at the NIC.
 
 ### Core Design Philosophy: Human-Cost Asymmetry
 
@@ -24,10 +24,11 @@ Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively f
 
 **Real-world impact**: A bot needs **38+ days** to make 10,000 requests. A human needs **seconds**.
 
-### The Three Heads
+### The Four Heads (Defense Layers)
 
+0. **XDP/eBPF (Layer 0 - The Flood Shield)**: Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
 1. **HAProxy (Layer 1 - The Shield)**: Connection management, circuit reputation tracking, stick tables
-2. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing  
+2. **Nginx (Layer 2 - The Filter)**: Protocol sanitization, static CAPTCHA delivery, header scrubbing
 3. **Fortify (Layer 3 - The Keeper)**: Rust application for CAPTCHA verification, threat analysis, adaptive defense
 
 ### Built for Tor
@@ -288,6 +289,7 @@ cd Cerberus
 - **[Instructions](docs/0002-instructions.md)**: Security gotchas, Tor best practices, roles, user stories, and development workflow
 
 **Defense Layers (0100-series):**
+- **[XDP/eBPF Layer](docs/0103-layer0-xdp.md)**: NIC-level flood shield, per-relay rate limiting
 - **[HAProxy Layer](docs/0100-layer1-haproxy.md)**: Connection management and circuit tracking
 - **[Nginx Layer](docs/0101-layer2-nginx.md)**: Protocol sanitization and static delivery
 - **[Fortify Layer](docs/0102-layer3-fortify.md)**: Rust application logic and CAPTCHA system
@@ -383,8 +385,8 @@ We follow responsible disclosure and will credit researchers in our security adv
 ## 🗺️ Roadmap
 
 ### ✅ Planning Complete
-- [x] Master architecture design
-- [x] 16 planning documents
+- [x] Master architecture design (including XDP/eBPF Layer 0)
+- [x] 17 planning documents
 - [x] User stories for all features
 - [x] CI/CD workflow specifications
 - [x] Security guidelines and Tor best practices
