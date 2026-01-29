@@ -1,3 +1,4 @@
+> **Note:** Application-level PoW is only ever used as a CAPTCHA variant (e.g., PoET, timing, or hidden challenge fields). Cerberus will never require users to solve standalone PoW puzzles or hashcash-style challenges outside the CAPTCHA system.
 # 🛡️ Cerberus - High-Assurance Tor Ingress Defense System
 
 **Multi-Layered DDoS Mitigation and Access Control for Tor Onion Services**

@@ -107,7 +107,10 @@ Bot Journey:
 
 ---
 
-#### 2. Gradual PoW Increases
+#### 2. Gradual PoW Increases (CAPTCHA-Only)
+
+**PoW is only ever presented as part of a CAPTCHA variant—not as a standalone challenge.**
+Users will never be required to solve hashcash-style puzzles manually. All PoW is embedded in the CAPTCHA system (e.g., PoET, timing, or hidden challenge fields). No separate PoW forms or workflows will ever be shown to users.
 
 **Start with zero PoW. Ramp up only when suspicious.**
 
