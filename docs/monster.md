@@ -40,8 +40,8 @@ Traffic flows through four distinct defense layers before reaching the backend.
 # 3. L2: The Kernel Shield (XDP / eBPF)
 *Located at the Linux Network Driver level.*
 
-### Implementation: `cerberus_xdp_kern.c`
-The following eBPF program drops volumetric floods before the OS allocates memory.
+### 3.1 Source Code: `cerberus_xdp_kern.c`
+The following eBPF program drops volumetric floods before the OS allocates memory. It implements a Token Bucket algorithm for per-IP rate limiting.
 
 ```c
 #include <linux/bpf.h>
@@ -50,14 +50,65 @@ The following eBPF program drops volumetric floods before the OS allocates memor
 #include <linux/udp.h>
 #include <linux/tcp.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
-// Map for tracking per-IP packet rates (LRU Hash)
+// --- Configuration Constants ---
+#define MAX_PPS_PER_IP 5000     // Packets Per Second Allowed
+#define BLOCK_DURATION 60000000000ULL // 60 seconds in nanoseconds
+
+// --- BPF Maps ---
+
+// 1. Rate Limit Map (LRU Hash)
+// Key: Source IP (u32), Value: struct rate_info
+struct rate_info {
+    __u64 last_seen;
+    __u64 packet_count;
+};
+
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, 100000);
-    __type(key, __u32);   // Source IP
-    __type(value, __u64); // Packet Count / Timestamp
-} rate_limit_map SEC(".maps");
+    __uint(max_entries, 100000); // Track up to 100k distinct IPs
+    __type(key, __u32);
+    __type(value, struct rate_info);
+} rate_map SEC(".maps");
+
+// 2. Block List (LRU Hash)
+// Key: Source IP (u32), Value: Expiry Timestamp (u64)
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 10000);
+    __type(key, __u32);
+    __type(value, __u64);
+} block_map SEC(".maps");
+
+// --- Helper Functions ---
+
+static __always_inline int check_rate_limit(__u32 src_ip) {
+    __u64 now = bpf_ktime_get_ns();
+    struct rate_info *info = bpf_map_lookup_elem(&rate_map, &src_ip);
+    
+    if (!info) {
+        // New IP: Initialize
+        struct rate_info new_info = { .last_seen = now, .packet_count = 1 };
+        bpf_map_update_elem(&rate_map, &src_ip, &new_info, BPF_ANY);
+        return XDP_PASS;
+    }
+
+    // Reset counter every second
+    if (now - info->last_seen > 1000000000ULL) {
+        info->last_seen = now;
+        info->packet_count = 1;
+    } else {
+        info->packet_count++;
+        if (info->packet_count > MAX_PPS_PER_IP) {
+            // Threshold exceeded: Add to block map
+            __u64 expiry = now + BLOCK_DURATION;
+            bpf_map_update_elem(&block_map, &src_ip, &expiry, BPF_ANY);
+            return XDP_DROP;
+        }
+    }
+    return XDP_PASS;
+}
 
 SEC("xdp")
 int cerberus_firewall(struct xdp_md *ctx) {
@@ -71,15 +122,29 @@ int cerberus_firewall(struct xdp_md *ctx) {
 
     struct iphdr *ip = (void *)(eth + 1);
     if ((void *)(ip + 1) > data_end) return XDP_PASS;
+    
+    // 2. Check Block List First (Fast Drop)
+    __u32 src_ip = ip->saddr;
+    __u64 now = bpf_ktime_get_ns();
+    __u64 *expiry = bpf_map_lookup_elem(&block_map, &src_ip);
+    
+    if (expiry) {
+        if (now < *expiry) return XDP_DROP; // Still blocked
+        bpf_map_delete_elem(&block_map, &src_ip); // Expired, unblock
+    }
 
-    // 2. Protocol Filter
-    // Allow TCP (Tor/HAProxy)
+    // 3. Protocol Filter
+    
+    // TCP: Rate Limit + SYN Flood Check
     if (ip->protocol == IPPROTO_TCP) {
-        // Todo: Add SYN flood check here
-        return XDP_PASS;
+        struct tcphdr *tcp = (void *)(ip + 1);
+        if ((void *)(tcp + 1) > data_end) return XDP_DROP;
+        
+        // Rate Limit all TCP traffic per IP
+        return check_rate_limit(src_ip);
     }
     
-    // Allow UDP only on WireGuard port (51820)
+    // UDP: Allow only WireGuard (51820)
     if (ip->protocol == IPPROTO_UDP) {
         struct udphdr *udp = (void *)(ip + 1);
         if ((void *)(udp + 1) > data_end) return XDP_DROP;
@@ -87,13 +152,68 @@ int cerberus_firewall(struct xdp_md *ctx) {
         return XDP_PASS;
     }
 
-    // Drop everything else (ICMP, etc.)
+    // Drop everything else (ICMP, SCTP, etc.)
     return XDP_DROP;
 }
 char _license[] SEC("license") = "GPL";
 ```
 
-### Deployment: `cerberus-init.sh` (XDP Auto-Detect)
+### 3.2 Build System: `Makefile`
+Compiles the eBPF program using clang/llvm.
+
+```makefile
+CLANG ?= clang
+LLC ?= llc
+ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
+
+BPF_CFLAGS ?= -O2 -g -target bpf -D__TARGET_ARCH_$(ARCH)
+
+all: cerberus_xdp.o
+
+cerberus_xdp.o: cerberus_xdp_kern.c
+	$(CLANG) $(BPF_CFLAGS) -c $< -o $@
+
+clean:
+	rm -f cerberus_xdp.o
+```
+
+### 3.3 Userspace Loader: `cerberus_loader.c`
+Loads the XDP program, attaches it to the interface, and pins the maps for userspace access.
+
+```c
+#include <bpf/libbpf.h>
+#include <linux/if_link.h>
+#include <net/if.h>
+
+int main(int argc, char **argv) {
+    struct bpf_object *obj;
+    int prog_fd, map_fd;
+    const char *ifname = "eth0"; // Detect dynamically in prod
+
+    // 1. Open and Load BPF Object
+    obj = bpf_object__open_file("cerberus_xdp.o", NULL);
+    if (libbpf_get_error(obj)) return 1;
+    
+    if (bpf_object__load(obj)) return 1;
+
+    // 2. Find Program and Attach
+    struct bpf_program *prog = bpf_object__find_program_by_name(obj, "cerberus_firewall");
+    prog_fd = bpf_program__fd(prog);
+    
+    int ifindex = if_nametoindex(ifname);
+    // Attach in DRIVER (Native) mode, fallback handled by script
+    bpf_set_link_xdp_fd(ifindex, prog_fd, XDP_FLAGS_DRV_MODE);
+
+    // 3. Pin Maps for Persistence
+    // Allows cerberus-cli to read maps even if loader exits
+    struct bpf_map *rate_map = bpf_object__find_map_by_name(obj, "rate_map");
+    bpf_map__pin(rate_map, "/sys/fs/bpf/cerberus_rate_map");
+    
+    return 0;
+}
+```
+
+### 3.4 Deployment: `cerberus-init.sh` (XDP Auto-Detect)
 This script detects the NIC driver and loads XDP in the best supported mode.
 
 ```bash
@@ -122,7 +242,36 @@ fi
 # 4. L3/L4: The Flow Shaper & Kernel Tuning
 *Optimization of the Linux Network Stack.*
 
-### Kernel Tuning: `/etc/sysctl.d/99-cerberus.conf`
+### 4.1 TC eBPF: Traffic Control Policy
+We use `tc` (Traffic Control) with a BPF classifier to apply stateful shaping.
+
+**Deployment Script: `cerberus-tc.sh`**
+```bash
+#!/bin/bash
+IFACE="eth0"
+
+# 1. Clear existing qdiscs
+tc qdisc del dev $IFACE clsact 2>/dev/null
+
+# 2. Add clsact qdisc (ingress + egress)
+tc qdisc add dev $IFACE clsact
+
+# 3. Load BPF Program for Ingress
+# This BPF program reads the 'rate_map' populated by XDP 
+# and sets skb->mark if the IP is flagged as "Suspicious"
+tc filter add dev $IFACE ingress bpf da obj cerberus_tc.o sec ingress_flow_shaper
+
+# 4. Apply Policing based on Marks
+# Mark 1: Suspicious (Add 100ms Latency)
+tc qdisc add dev $IFACE handle 1: root htb
+tc class add dev $IFACE parent 1: classid 1:1 htb rate 1gbit
+tc qdisc add dev $IFACE parent 1:1 handle 10: netem delay 100ms
+
+# Redirect marked packets to the netem qdisc
+tc filter add dev $IFACE parent 1: protocol ip handle 1 fw flowid 1:1
+```
+
+### 4.2 Kernel Tuning: `/etc/sysctl.d/99-cerberus.conf`
 Apply these settings to harden the TCP stack against exhaustion attacks.
 
 ```ini
@@ -356,47 +505,109 @@ server {
 # 7. L7+: Fortify (The Logic Engine)
 *Custom Rust binary. The Brain of the operation.*
 
-### A. The Ammo Box (RAM Pool Architecture)
+### 7.1 Core Logic & Entry Point: `main.rs`
+Sets up the Tokio runtime, Redis pool, and HTTP server.
+
+```rust
+use axum::{routing::{get, post}, Router};
+use deadpool_redis::{Config, Runtime};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Initialize Logging
+    tracing_subscriber::fmt::init();
+    
+    // 2. Setup Redis Pool (Clustered)
+    let mut cfg = Config::from_url("redis://10.100.0.1:6379");
+    let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
+    
+    // 3. Initialize Ammo Box (RAM Pool)
+    let ammo_box = Arc::new(AmmoBox::new(100_000));
+    let ammo_clone = ammo_box.clone();
+    
+    // 4. Spawn Background Workers
+    tokio::spawn(async move {
+        maintain_ammo_box(ammo_clone).await;
+    });
+
+    // 5. Build Router
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .route("/captcha", get(get_captcha))
+        .route("/verify", post(verify_solution))
+        .with_state(AppState { redis: pool, ammo: ammo_box });
+
+    // 6. Bind to Unix Socket (Isolation)
+    let listener = tokio::net::UnixListener::bind("/var/run/fortify.sock")?;
+    axum::serve(listener, app).await?;
+    
+    Ok(())
+}
+```
+
+### 7.2 The Ammo Box: `captcha.rs`
 Zero-allocation CAPTCHA serving using a pre-filled Ring Buffer.
 
 ```rust
-// Core Structs
-pub struct AmmoBox {
-    pool: CrossbeamQueue<CaptchaChallenge>,
-    capacity: usize,
-    last_dump: Instant,
+use serde::{Serialize, Deserialize};
+use crossbeam_queue::ArrayQueue;
+use std::time::{Instant, Duration};
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct CaptchaChallenge {
+    pub id: String,          // Uuid
+    #[serde(skip)]           // Don't send bytes in JSON debug
+    pub image_png: Vec<u8>,
+    pub answer_hash: String, // Sha256(answer + salt)
+    pub variant: String,     // "distorted_text", "object_id", etc.
 }
 
-pub struct CaptchaChallenge {
-    pub id: Uuid,
-    pub image_png: Vec<u8>,
-    pub answer_hash: [u8; 32], // Sha256(answer + salt)
-    pub variant: CaptchaVariant,
+pub struct AmmoBox {
+    pool: ArrayQueue<CaptchaChallenge>,
+    capacity: usize,
+    last_dump: Mutex<Instant>,
+}
+
+impl AmmoBox {
+    pub fn new(capacity: usize) -> Self {
+        // Todo: Load from disk (ammo.bin) on startup
+        Self {
+            pool: ArrayQueue::new(capacity),
+            capacity,
+            last_dump: Mutex::new(Instant::now()),
+        }
+    }
 }
 
 // Background Worker: The "Reloader"
 // Keeps the pool full and dumps to disk when idle
 async fn maintain_ammo_box(ammo: Arc<AmmoBox>) {
     loop {
-        // 1. Refill if low
-        if ammo.pool.len() < ammo.capacity * 0.8 {
-            let batch = generate_batch(100); // Generate 100 CAPTCHAs
-            ammo.pool.push(batch);
+        // 1. Refill if low (< 80%)
+        if ammo.pool.len() < (ammo.capacity as f64 * 0.8) as usize {
+            let batch = generate_batch(100); // Heavy CPU op
+            for cap in batch {
+                let _ = ammo.pool.push(cap);
+            }
         }
         
         // 2. Safe Dump Trigger (Capacity-Based)
         // Dump if FULL and hasn't dumped in 10 mins
-        if ammo.pool.is_full() && ammo.last_dump.elapsed() > Duration::from_secs(600) {
-             serialize_to_disk(&ammo.pool, "ammo.bin").await;
-             ammo.last_dump = Instant::now();
+        let mut last = ammo.last_dump.lock().await;
+        if ammo.pool.is_full() && last.elapsed() > Duration::from_secs(600) {
+             // Serialize to disk (async to avoid blocking)
+             save_ammo_to_disk(&ammo.pool, "ammo.bin").await;
+             *last = Instant::now();
         }
         
-        sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 ```
 
-### B. Logic Core & Load Shedding
+### 7.3 Logic Core & Load Shedding: `handlers.rs`
 Decides whether to admit, shed, or bunker based on system health.
 
 ```rust
@@ -410,9 +621,13 @@ pub async fn handle_request(req: Request) -> Response {
         // Shed Mode: Redirect to Peer
         81..=95 => {
             let peer = cluster::get_healthy_peer();
-            let passport = crypto::mint_passport(peer.id);
-            // Redirect to peer with passport token
-            Response::redirect(format!("http://{}/?passport_token={}", peer.onion, passport))
+            if let Some(p) = peer {
+                let passport = crypto::mint_passport(p.id);
+                // Redirect to peer with passport token
+                return Response::redirect(format!("http://{}/?passport_token={}", p.onion, passport));
+            }
+            // If no peers, fallback to Bunker
+            Response::html(QUEUE_PAGE_HTML)
         },
         
         // Bunker Mode: Queue (Meta-Refresh)
@@ -421,41 +636,73 @@ pub async fn handle_request(req: Request) -> Response {
 }
 ```
 
-### C. The Passport Protocol (Crypto)
+### 7.4 Error Handling: `error.rs`
+Using `thiserror` for precise control.
+
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum FortifyError {
+    #[error("Redis connection failed")]
+    RedisError(#[from] deadpool_redis::PoolError),
+    
+    #[error("Ammo box empty")]
+    AmmoEmpty,
+    
+    #[error("Invalid passport signature")]
+    InvalidPassport,
+    
+    #[error("System overloaded")]
+    Overload,
+}
+```
+
+### 7.5 The Passport Protocol (Crypto)
 Cryptographic tokens for inter-node trust.
 
 ```rust
+use ed25519_dalek::{Signer, Verifier, Signature};
+
 // Minting a Passport
-fn mint_passport(target_node: NodeId) -> String {
+fn mint_passport(target_node: String) -> String {
     let expiry = now() + 30; // Valid for 30 seconds
     let payload = format!("{}:{}", target_node, expiry);
-    let signature = ed25519::sign(&MY_PRIVATE_KEY, payload.as_bytes());
+    let keypair = get_node_keypair();
     
+    let signature = keypair.sign(payload.as_bytes());
     base64::encode(format!("{}:{}:{}", payload, signature, MY_NODE_ID))
 }
 
 // Validating (on the receiver node)
 fn validate_passport(token: String) -> bool {
-    let (payload, sig, sender_id) = parse_token(token);
+    let parts: Vec<&str> = token.split(':').collect();
+    if parts.len() != 4 { return false; }
+    
+    let target = parts[0];
+    let expiry = parts[1].parse::<u64>().unwrap_or(0);
+    let sig_bytes = base64::decode(parts[2]).unwrap_or_default();
+    let sender_id = parts[3];
+    
+    // 1. Check Expiry
+    if expiry < now() { return false; }
+    
+    // 2. Check Target (Is it for me?)
+    if target != MY_NODE_ID { return false; }
+    
+    // 3. Verify Signature
     let sender_pubkey = cluster::get_pubkey(sender_id);
+    let payload = format!("{}:{}", target, expiry);
+    let signature = Signature::from_bytes(&sig_bytes).unwrap();
     
-    // 1. Check Signature
-    if !ed25519::verify(sender_pubkey, payload, sig) { return false; }
-    
-    // 2. Check Expiry
-    if payload.expiry < now() { return false; }
-    
-    // 3. Check Target (Is it for me?)
-    if payload.target_node != MY_NODE_ID { return false; }
-    
-    return true;
+    sender_pubkey.verify(payload.as_bytes(), &signature).is_ok()
 }
 ```
 
 # 8. The Cluster (WireGuard Mesh)
 *Private internal network connecting Cerberus nodes.*
 
-### WireGuard Config: `/etc/wireguard/wg0.conf`
+### 8.1 WireGuard Config: `/etc/wireguard/wg0.conf`
 Encrypted P2P Mesh for Redis and Gossip traffic.
 
 ```ini
@@ -463,6 +710,8 @@ Encrypted P2P Mesh for Redis and Gossip traffic.
 Address = 10.100.0.1/24
 ListenPort = 51820
 PrivateKey = <Private_Key>
+# Firewall Marking for TC eBPF
+FwMark = 0x51820
 
 # Peer: Node 2
 [Peer]
@@ -474,8 +723,8 @@ PersistentKeepalive = 25
 # Peer: Node 3 ...
 ```
 
-### Redis Cluster Config: `/etc/redis/redis.conf`
- Optimized for shared state.
+### 8.2 Redis Cluster Config: `/etc/redis/redis.conf`
+Optimized for shared state.
 
 ```ini
 bind 10.100.0.1      # Listen ONLY on WireGuard Interface
@@ -485,19 +734,53 @@ cluster-config-file nodes.conf
 cluster-node-timeout 5000
 appendonly yes
 protected-mode yes   # Only accept connections from bound IPs
+maxmemory 2gb        # Cap state size
+maxmemory-policy allkeys-lru
 ```
 
-### Health Gossip (UDP 51820)
-Nodes broadcast a tiny JSON packet every 5 seconds to port 51820 (reusing WG port? No, must use different port inside tunnel, e.g., 9000).
+### 8.3 Health Gossip Protocol (UDP)
+Nodes broadcast a tiny JSON packet every 5 seconds to port 9000 (inside tunnel). This is separate from Redis for lightweight routing decisions.
 
-```json
-{
-  "node_id": "node-01",
-  "cpu_load": 45,
-  "tor_health": "healthy",
-  "timestamp": 1738200000
+**Struct Definition:**
+```rust
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GossipPacket {
+    pub node_id: String,
+    pub cpu_load: u8,        // 0-100
+    pub tor_health: bool,    // Is local Tor daemon responsive?
+    pub active_conns: u32,
+    pub timestamp: u64,
+}
+
+// Broadcasting (Sender)
+async fn broadcast_gossip(state: AppState) {
+    let socket = UdpSocket::bind("10.100.0.1:0").await.unwrap();
+    let peers = vec!["10.100.0.2:9000", "10.100.0.3:9000"];
+    
+    loop {
+        let packet = GossipPacket {
+            node_id: MY_NODE_ID.to_string(),
+            cpu_load: system::get_load(),
+            tor_health: check_tor_socks(),
+            active_conns: haproxy::get_conn_count(),
+            timestamp: now(),
+        };
+        
+        let bytes = serde_json::to_vec(&packet).unwrap();
+        for peer in &peers {
+            socket.send_to(&bytes, peer).await.unwrap();
+        }
+        sleep(Duration::from_secs(5)).await;
+    }
 }
 ```
+
+**Split-Brain Handling:**
+If a node stops receiving gossip from >50% of the cluster for 30 seconds:
+1.  It marks itself as "Isolated".
+2.  It stops issuing Passport tokens (cannot guarantee peer health).
+3.  It continues serving local traffic (fail-safe).
+4.  It attempts to re-handshake WireGuard peers (`wg set wg0 peer ...`).
 
 ---
 
