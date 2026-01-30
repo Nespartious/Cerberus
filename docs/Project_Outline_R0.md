@@ -1257,3 +1257,50 @@ ufw allow 51820/udp
 
 ufw enable
 ```
+
+---
+
+# 16. The Kill Switch & Volatile Vault
+*Scorched Earth Defense.*
+
+### 16.1 The Volatile Vault (RAM Disk)
+Critical identity artifacts live in `tmpfs` to ensure total data destruction on power loss.
+
+**Mount Point:** `/mnt/cerberus_vault/` (Size: 64MB)
+**Contents:**
+1.  **Tor Keys:** `hs_ed25519_secret_key` (The Onion Address)
+2.  **WireGuard:** `wg0.key` (Mesh Identity)
+3.  **Redis:** `dump.rdb` (Cluster State & IPs)
+4.  **Config:** `admin_prefix` (Randomized API Path)
+
+**Startup Logic:**
+1.  User enters passphrase.
+2.  System decrypts `vault.enc` (SSD) -> `/mnt/cerberus_vault/` (RAM).
+3.  Application reads strictly from RAM path.
+
+### 16.2 Randomized Admin Paths (Obscurity)
+To prevent enumeration, all sensitive endpoints are prefixed with a unique, high-entropy string generated at install.
+
+**Structure:** `POST /<ADMIN_PREFIX>/self-destruct`
+**Example:** `POST /k9x2m4p8q1/self-destruct`
+
+**Fortify Implementation:**
+```rust
+// In main.rs
+let admin_prefix = fs::read_to_string("/mnt/cerberus_vault/admin_prefix")?;
+let kill_route = format!("/{}/self-destruct", admin_prefix);
+
+let app = Router::new()
+    .route(&kill_route, post(trigger_kill_switch));
+```
+
+### 16.3 The Kill Logic (`self-destruct`)
+**Trigger:** Authenticated API call to the hidden path with a valid "Kill Code".
+
+**Action Sequence:**
+1.  **Shred Vault:** Overwrite `/mnt/cerberus_vault/*` with 0x00, then delete.
+2.  **Shred Persistence:** Overwrite `vault.enc` (SSD) with random data, then delete.
+3.  **Wipe Memory:** `mlock` critical structs and zeroize.
+4.  **Kernel Panic:** Trigger `echo c > /proc/sysrq-trigger` (Instant crash, no sync).
+
+---
