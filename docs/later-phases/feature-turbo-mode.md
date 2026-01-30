@@ -65,6 +65,33 @@ Use the existing tools to prove the concept.
 - **Libraries:** `arti` (The official Rust Tor implementation) creates a perfect foundation. We can use `arti-client` or `tor-proto` crates.
 - **Strategic Value:** Massive. Makes Cerberus a stand-alone, zero-dependency "Super Tor Node".
 
+### Phase C: The "Hydra" & "Roulette" Protocols
+**Advanced Defense Strategies enabled by RustBalance.**
+
+#### 1. The Immortal Cluster (High Availability)
+- **Zero SPOF:** The Master Key lives in the encrypted RAM Vault of *all* nodes.
+- **Leader Rotation:** Nodes randomly elect a new "Publisher" every 10 minutes.
+- **Benefit:** If the current Publisher dies, another takes over instantly. The service never goes offline.
+
+#### 2. The Hydra Maneuver (Anti-Intro Flood)
+**Scenario:** Attacker floods Node 1 (Intro Point).
+**Response:**
+1.  Node 1 reports "Under Attack".
+2.  RustBalance immediately generates a **New Descriptor**.
+3.  **Removes** Node 1. **Adds** Node 4 (Ghost/Standby Node).
+4.  **Result:** Attacker is stuck bombing a disconnected node. New clients connect to fresh nodes.
+
+#### 3. The Roulette Protocol (Moving Target)
+**Logic:** Every 10 minutes, the cluster completely reshuffles the deck.
+-   **Pool:** 10 Nodes.
+-   **Descriptor T=0:** Points to Nodes [1, 2, 3].
+-   **Descriptor T=10:** Points to Nodes [4, 5, 6].
+-   **Descriptor T=20:** Points to Nodes [7, 8, 9].
+**Benefit:**
+-   **Whack-a-Mole:** Attackers constantly target stale nodes.
+-   **Traffic Washing:** Forces attacker to rediscover targets constantly.
+-   **Anonymity:** Publication source moves, making correlation attacks impossible.
+
 ---
 
 ## 4. User Experience
