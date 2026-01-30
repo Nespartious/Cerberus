@@ -26,9 +26,9 @@ Traditional OnionBalance architectures have a single "Master" node that publishe
 
 ---
 
-## 3. Protocol Flow: "The Roulette" (10-Minute Cycle)
+## 3. Protocol Flow: "The Roulette" (3.5 Minute Cycle)
 
-### Phase 1: The Election (T-minus 1 Minute)
+### Phase 1: The Election (T-minus 30 Seconds)
 Nodes must agree on *who* will publish the next descriptor. We avoid heavy consensus (Paxos) in favor of **Deterministic Hashing** or **Redis Locking**.
 
 **Proposed Algorithm: The Time-Hash**
@@ -40,21 +40,22 @@ Nodes must agree on *who* will publish the next descriptor. We avoid heavy conse
 ### Phase 2: The Shuffle (Descriptor Generation)
 The Leader constructs the new descriptor.
 1.  **Inventory:** Query Redis/Gossip for list of "Healthy" nodes.
-2.  **Selection:** Pick `N` nodes to be Intro Points (e.g., 3 out of 10).
-    *   *Strategy:* Prioritize nodes with low load. Randomize to confuse attackers.
+2.  **Selection:** Pick `N` nodes to be **New Intro Points** (e.g., 3 out of 10).
+    *   *Strategy:* Completely replace the previous set if possible.
+    *   *Target Reset:* Attackers targeting the *old* Intro Points are now bombing "Ghost Nodes".
 3.  **Signing:** Use the Crown Jewels (Master Key) to sign the descriptor listing these `N` Intro Points.
 
 ### Phase 3: The Reveal (Publication)
 The Leader uploads the signed descriptor to the Tor HSDirs.
 *   **Propagation:** Takes ~30-60 seconds.
-*   **Overlap:** The *old* descriptor (published by Previous Leader) is still valid for ~60 mins, but clients prefer the fresher revision.
+*   **Overlap:** The *old* descriptor is valid until HSDirs update, but new clients fetch the new one.
 
 ### Phase 4: The Ghosting (Stale Node Defense)
 *   **Scenario:** Node 1 was an Intro Point in the *Previous* descriptor. It is NOT in the *New* descriptor.
 *   **State:** Node 1 enters **"Ghost Mode"**.
-    *   It accepts *existing* connections (long-lived sessions).
-    *   It expects *new* connection attempts to drop to near zero (as clients switch to the new descriptor).
-    *   **Defense:** Any *surge* of new traffic to Node 1 in Ghost Mode is **confirmed attack traffic** (attacking a stale target). Node 1 can aggressively drop/blackhole this traffic without collateral damage.
+    *   It accepts **Existing User Sessions** (Rendezvous circuits persist).
+    *   It expects **New Intro Requests** to drop to zero.
+    *   **Defense:** Any *new* Intro Request to a Ghost Node is **confirmed attack traffic**. Node 1 can blacklist the circuit immediately.
 
 ---
 
