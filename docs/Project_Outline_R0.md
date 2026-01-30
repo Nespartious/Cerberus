@@ -973,3 +973,121 @@ HiddenServiceAuthorizeClient stealth cerberus_node_1,cerberus_node_2
 - Deploy Monitoring Stack (Grafana).
 
 ---
+
+# 12. CI/CD & Quality Assurance
+*Automated pipelines to ensure security and stability.*
+
+### 12.1 GitHub Actions Workflow: `.github/workflows/cerberus-ci.yml`
+This pipeline runs on every Pull Request. It enforces security, compilation, and testing.
+
+```yaml
+name: Cerberus CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * *' # Daily security audit
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings" # Deny warnings
+
+jobs:
+  # --- JOB 1: Security Audit ---
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # 1. Dependency Scan (Rust)
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+      - name: Audit Dependencies
+        run: cargo audit
+      
+      # 2. Secret Scan
+      - name: Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      # 3. Shell Script Analysis
+      - name: Shellcheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './deploy'
+
+  # --- JOB 2: Build & Test (Rust + C) ---
+  build-test:
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - uses: actions/checkout@v4
+      
+      # 1. Setup Rust
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      
+      # 2. Setup BPF Toolchain
+      - name: Install LLVM/Clang
+        run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev gcc-multilib
+      
+      # 3. Linting
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-features -- -D warnings
+        
+      # 4. Compile XDP (C Layer)
+      - name: Compile XDP
+        run: |
+          cd src/xdp
+          make
+          ls -l cerberus_xdp.o
+          
+      # 5. Compile & Test Fortify (Rust Layer)
+      - name: Build Fortify
+        run: cargo build --verbose
+      - name: Run Unit Tests
+        run: cargo test --verbose
+
+  # --- JOB 3: Integration Test (Mocked Tor) ---
+  integration:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      
+      # 1. Spin up Environment
+      - name: Start Redis & HAProxy
+        run: docker-compose -f tests/integration/docker-compose.yml up -d
+        
+      # 2. Run End-to-End Test
+      - name: Test Flow
+        run: |
+          # Wait for services
+          sleep 10
+          # Hit Mock Entrypoint
+          curl -v http://localhost:8080/
+          # Verify Redis State
+          redis-cli -h localhost get "circuit:tracking"
+```
+
+### 12.2 Code Review Standards
+Every Pull Request must meet these criteria before merge.
+
+| Category | Requirement | Check Method |
+|----------|-------------|--------------|
+| **Security** | No `unsafe` blocks in Rust without comment justification. | Manual Review |
+| **Security** | No external runtime dependencies (CDNs, Google Fonts). | `grep` check |
+| **Privacy** | No logging of raw IP addresses or request bodies. | Manual Review |
+| **Performance** | XDP loops must be bounded (`#pragma unroll`). | Compiler/Verifier |
+| **Reliability** | No `unwrap()` or `expect()` in production logic path. | `clippy` |
+| **Tor-Native** | Failure handling for high-latency (timeouts > 5s). | Code Logic |
+
+---
