@@ -213,28 +213,89 @@ int main(int argc, char **argv) {
 }
 ```
 
-### 3.4 Deployment: `cerberus-init.sh` (XDP Auto-Detect)
-This script detects the NIC driver and loads XDP in the best supported mode.
+### 3.4 Deployment: `cerberus-init.sh` (Robust XDP Loader)
+Detects hardware, validates dependencies, and attempts Native loading with a robust Generic fallback.
 
 ```bash
 #!/bin/bash
-INTERFACE=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
-DRIVER=$(ethtool -i $INTERFACE | grep driver | awk '{print $2}')
+set -u # Exit on undefined variables
 
-echo "Detected Interface: $INTERFACE (Driver: $DRIVER)"
+LOG_FILE="/var/log/cerberus-xdp.log"
+exec > >(tee -a ${LOG_FILE}) 2>&1
 
-# Try Native Mode first (Hardware Offload or Driver support)
-echo "Attempting XDP Native Mode..."
-ip link set dev $INTERFACE xdp obj cerberus_xdp.o sec xdp 2>/dev/null
+echo "[$(date)] Starting Cerberus XDP Init..."
 
-if [ $? -eq 0 ]; then
-    echo "✅ XDP Native Mode Loaded."
-else
-    echo "⚠️ Native Mode failed. Falling back to Generic Mode (SKB)..."
-    # Fallback to Generic Mode (Works on any NIC, but slower)
-    ip link set dev $INTERFACE xdpdgeneric obj cerberus_xdp.o sec xdp
-    echo "✅ XDP Generic Mode Loaded."
+# 1. Dependency Check
+for cmd in ip ethtool bpftool; do
+    if ! command -v $cmd &> /dev/null; then
+        echo "❌ Critical Error: $cmd not found. Install iproute2, ethtool, bpf-tools."
+        exit 1
+    fi
+done
+
+# 2. Interface Detection
+# Find default interface used for routing
+IFACE=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
+if [ -z "$IFACE" ]; then
+    echo "❌ Error: Could not detect default interface."
+    exit 1
 fi
+
+DRIVER=$(ethtool -i $IFACE | grep driver | awk '{print $2}')
+echo "ℹ️  Detected Interface: $IFACE (Driver: $DRIVER)"
+
+# 3. Cleanup Previous State
+ip link set dev $IFACE xdp off 2>/dev/null
+rm -f /sys/fs/bpf/cerberus_rate_map 2>/dev/null
+
+# 4. Load Function
+load_xdp() {
+    local mode=$1
+    local flags=""
+    
+    if [ "$mode" == "native" ]; then
+        flags="xdp" # XDP_FLAGS_DRV_MODE
+    else
+        flags="xdpgeneric" # XDP_FLAGS_SKB_MODE
+    fi
+
+    echo "🔄 Attempting loading in $mode mode..."
+    
+    # Try loading via ip link (basic)
+    if ip link set dev $IFACE $flags obj cerberus_xdp.o sec xdp verbose; then
+        echo "✅ Success: Loaded XDP in $mode mode."
+        return 0
+    else
+        echo "⚠️  Failed to load in $mode mode."
+        return 1
+    fi
+}
+
+# 5. Execution Strategy
+# Try Native (Driver) Mode first for performance
+if load_xdp "native"; then
+    MODE="native"
+else
+    # Fallback to Generic (SKB) Mode
+    echo "⚠️  Native loading failed. Falling back to Generic mode (slower but compatible)."
+    if load_xdp "generic"; then
+        MODE="generic"
+    else
+        echo "❌ Critical Failure: Could not load XDP in Native OR Generic mode."
+        echo "   Check kernel version (requires 4.18+) and verifier logs."
+        exit 1
+    fi
+fi
+
+# 6. Verification
+IS_LOADED=$(ip link show dev $IFACE | grep "prog/xdp")
+if [ -z "$IS_LOADED" ]; then
+    echo "❌ Error: Interface reports XDP not attached despite command success."
+    exit 1
+fi
+
+echo "🚀 Cerberus XDP Active on $IFACE [$MODE]"
+exit 0
 ```
 
 ---
@@ -271,39 +332,71 @@ tc qdisc add dev $IFACE parent 1:1 handle 10: netem delay 100ms
 tc filter add dev $IFACE parent 1: protocol ip handle 1 fw flowid 1:1
 ```
 
-### 4.2 Kernel Tuning: `/etc/sysctl.d/99-cerberus.conf`
-Apply these settings to harden the TCP stack against exhaustion attacks.
+### 4.2 Dynamic Kernel Tuning: `cerberus-sysctl.sh`
+Calculates optimal TCP settings based on available RAM and CPU, supporting everything from low-end VPS to high-end dedicated servers.
 
-```ini
-# --- SYN Flood Protection ---
-# Enable SYN cookies (fallback when queue is full)
+```bash
+#!/bin/bash
+# Generate /etc/sysctl.d/99-cerberus.conf dynamically
+
+MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+MEM_MB=$((MEM_KB / 1024))
+CPU_CORES=$(nproc)
+
+echo "Detected: ${MEM_MB}MB RAM, ${CPU_CORES} Cores"
+
+# --- Calculate Limits ---
+
+# Max Connections (somaxconn)
+# Base: 4096. Add 1024 per 256MB RAM. Cap at 262144.
+MAX_CONN=$(( 4096 + (MEM_MB / 256) * 1024 ))
+if [ $MAX_CONN -gt 262144 ]; then MAX_CONN=262144; fi
+
+# SYN Backlog
+# Base: 1024. Add 512 per 128MB RAM.
+SYN_BACKLOG=$(( 1024 + (MEM_MB / 128) * 512 ))
+if [ $SYN_BACKLOG -gt 65535 ]; then SYN_BACKLOG=65535; fi
+
+# File Descriptors
+FILE_MAX=$(( MAX_CONN * 4 ))
+
+echo "Calculated Optimization:"
+echo "  Max Connections: $MAX_CONN"
+echo "  SYN Backlog:     $SYN_BACKLOG"
+echo "  File Max:        $FILE_MAX"
+
+# --- Write Configuration ---
+cat <<EOF > /etc/sysctl.d/99-cerberus.conf
+# Cerberus Dynamic Tuning
+# Generated on $(date) for ${MEM_MB}MB / ${CPU_CORES} Core system
+
+# --- Memory Protection ---
+vm.swappiness = 10
+vm.overcommit_memory = 1
+
+# --- Network Hardening ---
 net.ipv4.tcp_syncookies = 1
-# Increase SYN backlog (default 1024 -> 4096)
-net.ipv4.tcp_max_syn_backlog = 4096
-# Reduce SYN-ACK retries (don't wait for spoofed IPs)
 net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_max_syn_backlog = ${SYN_BACKLOG}
+net.core.somaxconn = ${MAX_CONN}
+net.core.netdev_max_backlog = ${MAX_CONN}
 
-# --- Resource Exhaustion Defense ---
-# Fast recycling of TIME_WAIT sockets
-net.ipv4.tcp_tw_reuse = 1
-# Max TIME_WAIT sockets (prevent RAM exhaustion)
-net.ipv4.tcp_max_tw_buckets = 1440000
-# Aggressive FIN timeout (close dead connections fast)
+# --- Resource Recycling ---
 net.ipv4.tcp_fin_timeout = 15
-# Keepalive: Check every 60s, fail after 3 probes
 net.ipv4.tcp_keepalive_time = 60
 net.ipv4.tcp_keepalive_probes = 3
 net.ipv4.tcp_keepalive_intvl = 10
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_max_tw_buckets = $(( MAX_CONN * 2 ))
 
-# --- Tor High-Load Optimization ---
-# Increase max open files (file descriptors)
-fs.file-max = 100000
-# Max connection queue
-net.core.somaxconn = 65535
-# Max packet backlog
-net.core.netdev_max_backlog = 16384
-# Local port range (ephemeral ports)
+# --- Connection Limits ---
+fs.file-max = ${FILE_MAX}
 net.ipv4.ip_local_port_range = 1024 65535
+EOF
+
+# Apply
+sysctl --system
+echo "✅ Sysctl optimization applied."
 ```
 
 ---
@@ -548,12 +641,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ### 7.2 The Ammo Box: `captcha.rs`
-Zero-allocation CAPTCHA serving using a pre-filled Ring Buffer.
+Implements "Deep Storage" strategy: Tier 1 (RAM Ring Buffer) for speed, Tier 2 (Disk Cache) for sustainment.
 
 ```rust
 use serde::{Serialize, Deserialize};
 use crossbeam_queue::ArrayQueue;
 use std::time::{Instant, Duration};
+use tokio::fs;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CaptchaChallenge {
@@ -572,7 +666,8 @@ pub struct AmmoBox {
 
 impl AmmoBox {
     pub fn new(capacity: usize) -> Self {
-        // Todo: Load from disk (ammo.bin) on startup
+        // On startup: Try loading from disk (ammo.bin)
+        // If disk fails, start empty and let background worker fill
         Self {
             pool: ArrayQueue::new(capacity),
             capacity,
@@ -582,22 +677,56 @@ impl AmmoBox {
 }
 
 // Background Worker: The "Reloader"
-// Keeps the pool full and dumps to disk when idle
+// Prioritizes loading from disk under load, generating to disk when idle.
 async fn maintain_ammo_box(ammo: Arc<AmmoBox>) {
+    const MAX_DISK_AMMO: usize = 1_000_000; // Hard cap: 1 Million CAPTCHAs (~500MB on disk)
+    const MIN_DISK_FREE_GB: u64 = 10;       // Don't fill disk if low space
+
     loop {
-        // 1. Refill if low (< 80%)
-        if ammo.pool.len() < (ammo.capacity as f64 * 0.8) as usize {
-            let batch = generate_batch(100); // Heavy CPU op
-            for cap in batch {
-                let _ = ammo.pool.push(cap);
+        let current_load = system::get_cpu_load(); // 0-100
+        let pool_len = ammo.pool.len();
+        let pool_max = ammo.capacity;
+        let disk_count = disk_store::get_count();
+        let free_space_gb = disk_store::get_free_space_gb();
+
+        // 1. Critical Low (< 10%): Emergency Action
+        if pool_len < pool_max / 10 {
+            if current_load > 80 {
+                // CPU High: Load from Disk (Cheap I/O)
+                load_batch_from_disk(&ammo).await;
+            } else {
+                // CPU Low: Generate (Expensive)
+                let batch = generate_batch(100); 
+                push_batch(&ammo, batch);
+            }
+        }
+        // 2. Normal Maintenance (< 80%)
+        else if pool_len < (pool_max as f64 * 0.8) as usize {
+            if current_load < 50 {
+                // Only generate if system is healthy
+                let batch = generate_batch(50);
+                push_batch(&ammo, batch);
             }
         }
         
-        // 2. Safe Dump Trigger (Capacity-Based)
-        // Dump if FULL and hasn't dumped in 10 mins
+        // 3. Surplus Strategy (> 95%): Deep Storage
+        // Generate "Ammo Cans" to disk ONLY if:
+        // - RAM Pool is full
+        // - CPU is idle (< 20%)
+        // - Disk usage is below cap (< 1M)
+        // - Disk space is healthy (> 10GB free)
+        if pool_len > (pool_max as f64 * 0.95) as usize 
+           && current_load < 20 
+           && disk_count < MAX_DISK_AMMO
+           && free_space_gb > MIN_DISK_FREE_GB 
+        {
+             generate_ammo_can_to_disk("ammo_cache/batch_x.bin", 1000).await;
+        }
+        
+        // 4. Safe Dump Trigger (Persist RAM to Disk)
+        // Dump if FULL and hasn't dumped in 10 mins (Recovery Point)
         let mut last = ammo.last_dump.lock().await;
         if ammo.pool.is_full() && last.elapsed() > Duration::from_secs(600) {
-             // Serialize to disk (async to avoid blocking)
              save_ammo_to_disk(&ammo.pool, "ammo.bin").await;
              *last = Instant::now();
         }
