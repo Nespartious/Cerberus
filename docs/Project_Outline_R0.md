@@ -640,6 +640,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Bind to Unix Socket (Isolation)
     let listener = tokio::net::UnixListener::bind("/var/run/fortify.sock")?;
+    
+    // 7. Initial State Sync (for Cluster nodes)
+    // If we are part of a 2-node cluster, pull latest state from peer
+    if let Some(peer_ip) = config.peer_ip {
+        info!("🔄 Syncing state from peer {}...", peer_ip);
+        sync_state_from_peer(peer_ip, &pool).await?;
+    }
+
     axum::serve(listener, app).await?;
     
     Ok(())
@@ -859,13 +867,13 @@ PersistentKeepalive = 25
 # Peer: Node 3 ...
 ```
 
-### 8.2 Redis Cluster Config: `/etc/redis/redis.conf`
-Optimized for shared state. Default to Standalone mode (supports 1-node setup).
+### 8.2 Redis Config: `/etc/redis/redis.conf`
+Optimized for shared state. Default to Standalone mode (Application handles sync for small clusters).
 
 ```ini
 bind 10.100.0.1      # Listen ONLY on WireGuard Interface
 port 6379
-cluster-enabled no   # Default: No. Enable only if 3+ nodes are available.
+cluster-enabled no   # Default: No. Use Dual-Write logic for 2-3 nodes. Enable for 4+ nodes.
 cluster-config-file nodes.conf
 cluster-node-timeout 5000
 appendonly yes
@@ -874,7 +882,18 @@ maxmemory 2gb        # Cap state size
 maxmemory-policy allkeys-lru
 ```
 
-### 8.3 Health Gossip Protocol (UDP)
+### 8.3 Cluster State Sync Strategy
+**Scenario A: Small Cluster (2-3 Nodes)**
+- **Method:** Application-Level Dual-Write (Broadcast).
+- **Writes:** When Fortify updates state (e.g., Ban Circuit), it writes to Local Redis AND Peer Redis (via WireGuard).
+- **Reads:** Always read from Local Redis (fast).
+- **Recovery:** On boot, Fortify pulls the full Ban List / Threat Dial from a healthy peer to populate Local Redis.
+
+**Scenario B: Large Cluster (4+ Nodes)**
+- **Method:** Native Redis Cluster (Sharding).
+- **Writes/Reads:** Fortify connects to the Redis Mesh; Redis handles distribution.
+
+### 8.4 Health Gossip Protocol (UDP)
 Nodes broadcast a tiny JSON packet every 5 seconds to port 9000 (inside tunnel). This is separate from Redis for lightweight routing decisions.
 
 **Struct Definition:**
