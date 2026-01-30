@@ -147,13 +147,14 @@ int cerberus_firewall(struct xdp_md *ctx) {
     // UDP: Allow only WireGuard (51820)
     if (ip->protocol == IPPROTO_UDP) {
         struct udphdr *udp = (void *)(ip + 1);
-        if ((void *)(udp + 1) > data_end) return XDP_DROP;
-        if (udp->dest != bpf_htons(51820)) return XDP_DROP;
+        if ((void *)(udp + 1) > data_end) return XDP_PASS; // Malformed UDP -> Pass to kernel validation
+        if (udp->dest != bpf_htons(51820)) return XDP_PASS; // Allow other UDP (DNS/DHCP) for now
         return XDP_PASS;
     }
 
-    // Drop everything else (ICMP, SCTP, etc.)
-    return XDP_DROP;
+    // Default Action: PASS (Allow unknown traffic for MVP stability)
+    // TODO: Harden to XDP_DROP in future phases once allowlist is exhaustive (SSH, ICMP, DNS)
+    return XDP_PASS;
 }
 char _license[] SEC("license") = "GPL";
 ```
@@ -469,7 +470,7 @@ frontend ft_tor_public
 
 # --- Lane B: Passport/VIP (Port 8081) ---
 frontend ft_tor_passport
-    bind 127.0.0.1:8081 accept-proxy
+    bind 127.0.0.1:8081 accept-proxy # HTTP (Encrypted by WireGuard/Tor)
     
     # 1. Validation
     # Must have ?passport_token=...
@@ -732,7 +733,8 @@ async fn maintain_ammo_box(ammo: Arc<AmmoBox>) {
         // Dump if FULL and hasn't dumped in 10 mins (Recovery Point)
         let mut last = ammo.last_dump.lock().await;
         if ammo.pool.is_full() && last.elapsed() > Duration::from_secs(600) {
-             save_ammo_to_disk(&ammo.pool, "ammo.bin").await;
+             // Save to /var/lib/cerberus/ammo.bin
+             save_ammo_to_disk(&ammo.pool, "/var/lib/cerberus/ammo.bin").await;
              *last = Instant::now();
         }
         
@@ -858,12 +860,12 @@ PersistentKeepalive = 25
 ```
 
 ### 8.2 Redis Cluster Config: `/etc/redis/redis.conf`
-Optimized for shared state.
+Optimized for shared state. Default to Standalone mode (supports 1-node setup).
 
 ```ini
 bind 10.100.0.1      # Listen ONLY on WireGuard Interface
 port 6379
-cluster-enabled yes
+cluster-enabled no   # Default: No. Enable only if 3+ nodes are available.
 cluster-config-file nodes.conf
 cluster-node-timeout 5000
 appendonly yes
