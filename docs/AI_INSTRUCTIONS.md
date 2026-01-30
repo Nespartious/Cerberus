@@ -1598,3 +1598,49 @@ This document is a living guide and should be updated when:
 ---
 
 **Remember**: Cerberus operates in a hostile environment by default. Every decision should prioritize security over convenience. When in doubt, choose the more restrictive option.
+
+## 4. Documentation & Indexing Mandate
+**Rule:** Code changes WITHOUT documentation updates are **incomplete**.
+
+### The "All-Update" Policy
+When you modify a feature (e.g., changing CAPTCHA logic), you MUST update:
+1.  **`Project_Outline_R0.md`** (The Bible).
+2.  **User Guides:** `docs/guides/user_guide.md` (if UX changes).
+3.  **Troubleshooting:** `docs/support/troubleshooting.md` (new failure modes).
+4.  **FAQ:** `docs/support/faq.md` (new common questions).
+
+### AI Indexing Tags
+Use these tags in file headers and commit messages to enable fast context retrieval:
+- `[#L2-XDP]`: Kernel/XDP layer.
+- `[#L4-HAP]`: HAProxy layer.
+- `[#L7-NGX]`: Nginx layer.
+- `[#L7-RUST]`: Fortify logic.
+- `[#OPS]`: Cluster, Redis, WireGuard.
+- `[#DOCS]`: Documentation updates.
+
+## 5. Definition of Done (DoD)
+A task is ONLY complete when:
+- [ ] **Code Compiles:** Rust `cargo build` passes, C XDP compiles.
+- [ ] **No JS Dependency:** Verified that feature works with JavaScript disabled.
+- [ ] **Fail-Closed:** Verified that failure stops traffic, does not leak.
+- [ ] **Docs Updated:** `Project_Outline_R0` and relevant guides updated.
+- [ ] **Tests Added:** Unit tests for logic, Integration tests for flow.
+- [ ] **Tor Safety:** No external leaks (CDNs, fonts, analytics) verified.
+
+## 6. Forbidden Patterns (Strict Blacklist)
+| Context | Forbidden Pattern | Reason |
+|---------|-------------------|--------|
+| **Rust** | `.unwrap()` in logic | Panics kill the protection layer. Use `?` or `expect`. |
+| **Rust** | `std::thread::spawn` | Use `tokio::spawn` for async scale. |
+| **Web** | `<script src="...">` | External CDNs deanonymize users. Local assets only. |
+| **Web** | `onclick="..."` | Inline JS is blocked by CSP. Use CSS or server logic. |
+| **C/XDP** | Unbounded loops | Verifier rejection. Use `#pragma unroll`. |
+| **Logs** | Logging Raw IPs | Privacy violation. Log hashed IDs or counters only. |
+
+## 7. Agent Workflow Protocol
+1.  **Read Context:** Start by reading `docs/Project_Outline_R0.md` and `AI_INSTRUCTIONS.md`.
+2.  **Check Archive:** Search `docs/archive/` if historical context is needed (read-only).
+3.  **Plan:** Outline the changes. Identify conflicts with the "Iron Laws".
+4.  **Implement:** Write code/configs.
+5.  **Document:** Update `R0` and supporting docs.
+6.  **Verify:** Check against DoD list.
