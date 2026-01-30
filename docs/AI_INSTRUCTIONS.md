@@ -1,3 +1,39 @@
+# 🤖 AI Agent Directives (PRIME DIRECTIVES)
+
+> **CRITICAL:** You must read and follow these rules before performing any task in this repository.
+
+## 1. The Single Source of Truth
+- **`docs/Project_Outline_R0.md`** is the **Bible** for this project.
+- It contains the Master Architecture, Configs, and Implementation Details.
+- **Do NOT** create new planning documents (e.g., `01xx-concept.md`). Update `Project_Outline_R0.md` or write actual code.
+- **Archive:** Old planning docs are in `docs/archive/`. Read them for context if needed, but treat them as read-only history.
+
+## 2. The Iron Laws of Cerberus
+1.  **NO JavaScript:** The user-facing defense stack (Nginx/Fortify) must work 100% without JS.
+    *   Exception: Admin Monitoring UI (Grafana) *can* use JS, as it's for operators, not Tor users.
+2.  **Tor-Native:** All design decisions must assume:
+    *   High Latency (500ms+ RTT).
+    *   No stable Client IP (Circuit ID is ephemeral).
+    *   Anonymity is paramount (No tracking pixels, no external CDNs).
+3.  **Fail-Closed:** If a security component (XDP, HAProxy, Fortify) fails, traffic MUST stop. Never fail-open.
+4.  **Privacy First:** Zero logging of traffic content. Log only metrics (counters, rates) or hashed identifiers.
+
+## 3. Coding Standards
+### Rust (Fortify)
+- **Async Runtime:** Use `tokio` for everything.
+- **Error Handling:** Use `thiserror` for libs and `anyhow` for binaries. **No `unwrap()`** in logic paths.
+- **Serialization:** Use `serde` / `serde_json`.
+- **Logging:** Use `tracing` (structured logging).
+
+### C (XDP/eBPF)
+- **Verifier Safe:** All loops must be bounded (`#pragma unroll`).
+- **Memory:** Strict stack limits (512 bytes). Use Per-CPU Maps for high-volume counters.
+
+### Configuration
+- **Hardening:** All configs (Nginx, HAProxy, Sysctl) must be tuned for *hostile* environments (aggressive timeouts, resource caps).
+
+---
+
 # Cerberus Development & Security Instructions
 
 ## 📖 User Story
