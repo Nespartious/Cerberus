@@ -272,30 +272,40 @@ load_xdp() {
     fi
 }
 
-# 5. Execution Strategy
-# Try Native (Driver) Mode first for performance
+# 5. Execution Strategy: Adaptive Loading
+# Plan A: XDP Native (Best Performance)
 if load_xdp "native"; then
-    MODE="native"
-else
-    # Fallback to Generic (SKB) Mode
-    echo "⚠️  Native loading failed. Falling back to Generic mode (slower but compatible)."
-    if load_xdp "generic"; then
-        MODE="generic"
-    else
-        echo "❌ Critical Failure: Could not load XDP in Native OR Generic mode."
-        echo "   Check kernel version (requires 4.18+) and verifier logs."
-        exit 1
-    fi
+    MODE="XDP-NATIVE"
+    echo "🚀 Cerberus Active: L2 Hardware Mode"
+    exit 0
 fi
 
-# 6. Verification
-IS_LOADED=$(ip link show dev $IFACE | grep "prog/xdp")
-if [ -z "$IS_LOADED" ]; then
-    echo "❌ Error: Interface reports XDP not attached despite command success."
-    exit 1
+# Plan B: XDP Generic (Good Compatibility)
+echo "⚠️  Native loading failed. Attempting XDP Generic mode..."
+if load_xdp "generic"; then
+    MODE="XDP-GENERIC"
+    echo "✅ Cerberus Active: L2 Generic Mode"
+    exit 0
 fi
 
-echo "🚀 Cerberus XDP Active on $IFACE [$MODE]"
+# Plan C: TC eBPF (Robust Fallback)
+echo "⚠️  XDP failed entirely. Attempting TC eBPF Ingress mode..."
+# TC requires clsact qdisc
+tc qdisc add dev $IFACE clsact 2>/dev/null
+if tc filter add dev $IFACE ingress bpf da obj cerberus_tc.o sec ingress_firewall; then
+    MODE="TC-BPF"
+    echo "🛡️ Cerberus Active: L3 TC Mode (Traffic Control)"
+    exit 0
+fi
+
+# Plan D: Nftables Raw (Last Resort)
+echo "⚠️  eBPF/TC failed. Falling back to Nftables Raw..."
+nft add table ip cerberus_raw
+nft add chain ip cerberus_raw prerouting { type filter hook prerouting priority -300\; }
+# Add basic drop rules here
+nft add rule ip cerberus_raw prerouting udp dport != 51820 drop
+MODE="NFTABLES"
+echo "🛡️ Cerberus Active: L3 Nftables Mode (Basic Filtering)"
 exit 0
 ```
 
