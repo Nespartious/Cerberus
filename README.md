@@ -1,4 +1,3 @@
-> **Note:** Application-level PoW is only ever used as a CAPTCHA variant (e.g., PoET, timing, or hidden challenge fields). Cerberus will never require users to solve standalone PoW puzzles or hashcash-style challenges outside the CAPTCHA system.
 # 🛡️ Cerberus - High-Assurance Tor Ingress Defense System
 
 **Multi-Layered DDoS Mitigation and Access Control for Tor Onion Services**
@@ -27,14 +26,15 @@ Cerberus is a specialized, defense-in-depth reverse proxy designed exclusively f
 
 ### Cerberus Defense Stack (by Network Layer)
 
-**L2 (XDP/eBPF - Kernel Shield):** Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
-**L3/L4 (TC eBPF - Flow Shaper):** Stateful relay-aware flow shaping, latency/delay, probabilistic drops, skb marks for L4
-**L4 (Kernel TCP Policy):** SYN cookies, backlog caps, aggressive cleanup, timeouts
-**L4 (HAProxy - Connection Governor):** Connection management, circuit reputation tracking, stick tables, HTTP protocol correctness, header limits
-**L7 (Protocol Normalization):** Path/header normalization, CRLF, canonical Host, parser differential defense (HAProxy/Nginx or Rust filter)
-**L7 (Nginx - Gatekeeper):** Protocol sanitization, static CAPTCHA delivery, header scrubbing, session/cookie check
-**L7 (Nginx ↔ Fortify Isolation):** UNIX socket, strict timeouts, memory caps, queue governor
-**L7+ (Fortify - Logic & CAPTCHA):** Rust application for CAPTCHA verification, threat analysis, adaptive defense, RAM pool (ammo box), queue, passport protocol
+- **L2 (XDP/eBPF - Kernel Shield):** Drops abusive packets at the NIC, per-relay rate limiting, SYN/malformed flood protection
+- **L3/L4 (TC eBPF - Flow Shaper):** Stateful relay-aware flow shaping, latency/delay, probabilistic drops, skb marks for L4
+- **L4 (Kernel TCP Policy):** SYN cookies, backlog caps, aggressive cleanup, timeouts
+- **L4 (HAProxy - Connection Governor):** Connection management, circuit reputation tracking, stick tables, HTTP protocol correctness, header limits
+- **L7 (Protocol Normalization):** Path/header normalization, CRLF, canonical Host, parser differential defense (HAProxy/Nginx or Rust filter)
+- **L7 (Nginx - Gatekeeper):** Protocol sanitization, static CAPTCHA delivery, header scrubbing, session/cookie check
+- **L7 (Nginx ↔ Fortify Isolation):** UNIX socket, strict timeouts, memory caps, queue governor
+- **L7+ (Fortify - Logic & CAPTCHA):** Rust application for CAPTCHA verification, threat analysis, adaptive defense, RAM pool (ammo box), queue, passport protocol
+
 > **Backend .onion secrecy:** Only Cerberus nodes know the real backend .onion address, and the backend only allows connections from Cerberus nodes.
 
 ### Built for Tor
