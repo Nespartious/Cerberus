@@ -612,9 +612,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Initialize Logging
     tracing_subscriber::fmt::init();
     
-    // 2. Setup Redis Pool (Clustered)
+    // 2. Setup Redis Pool (Clustered) - Non-Blocking
     let mut cfg = Config::from_url("redis://10.100.0.1:6379");
-    let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
+    let pool = cfg.create_pool(Some(Runtime::Tokio1))
+        .unwrap_or_else(|e| {
+            error!("⚠️  Redis Init Failed: {}. Starting in DEGRADED MODE (Local Only).", e);
+            // Create a "Null" pool or handle in AppState
+            create_offline_pool() 
+        });
     
     // 3. Initialize Ammo Box (RAM Pool)
     let ammo_box = Arc::new(AmmoBox::new(100_000));
@@ -1091,3 +1096,143 @@ Every Pull Request must meet these criteria before merge.
 | **Tor-Native** | Failure handling for high-latency (timeouts > 5s). | Code Logic |
 
 ---
+
+# 13. Operational Playbook
+*Critical procedures for maintaining Cerberus in production.*
+
+### 13.1 Key Rotation (Backend Tor Auth)
+**Trigger:** Periodic (30 days) or Suspected Breach.
+
+1.  **Generate New Keys (on Backend):**
+    ```bash
+    # Generate new client keypair
+    cd /var/lib/tor/hidden_service/
+    /usr/bin/tor-gencert --create-identity-key
+    ```
+2.  **Update `torrc` (Backend):**
+    ```bash
+    HiddenServiceAuthorizeClient stealth cerberus_node_1_v2,cerberus_node_2_v2
+    ```
+3.  **Reload Tor (Backend):** `systemctl reload tor`
+4.  **Extract New Auth Cookies:** Check `/var/lib/tor/hidden_service/hostname`.
+5.  **Distribute to Nodes:** Update `torrc` on all Cerberus nodes with the new `HidServAuth` line.
+6.  **Reload Node Tor:** `systemctl reload tor` (Rolling restart).
+
+### 13.2 Redis Cluster Backup
+**Trigger:** Before upgrades or weekly.
+
+```bash
+# On any Redis node
+redis-cli --cluster call 10.100.0.1:6379 BGSAVE
+# Copy dump.rdb from /var/lib/redis/ to secure storage
+scp /var/lib/redis/dump.rdb user@backup-server:/backups/redis-$(date +%F).rdb
+```
+
+### 13.3 Manual Ban (CLI)
+**Trigger:** Operator detects abuse not caught by auto-rules.
+
+```bash
+# Connect to HAProxy Runtime API
+echo "set table be_stick_tables key <circuit_id> data.gpc0 2" | socat stdio /var/run/haproxy.sock
+```
+
+### 13.4 XDP Live Update
+**Trigger:** Deploying new eBPF filter logic without dropping traffic.
+
+```bash
+# 1. Compile new object
+make cerberus_xdp.o
+
+# 2. Atomic Replacement (Native Mode)
+# ip link set xdp automatically replaces the program atomically
+ip link set dev eth0 xdp obj cerberus_xdp.o sec xdp
+
+# 3. Verify Maps
+bpftool map show
+```
+
+---
+
+# 14. Developer Guide
+*Tools for local development and testing.*
+
+### 14.1 Local Dev Stack (`docker-compose.dev.yml`)
+Spins up a mock environment with Redis, HAProxy, and a dummy backend.
+
+```yaml
+version: '3.8'
+services:
+  redis:
+    image: redis:alpine
+    ports: ["6379:6379"]
+    
+  haproxy:
+    image: haproxy:lts
+    volumes:
+      - ./deploy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    ports: ["8080:8080", "8081:8081"]
+    
+  fortify:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - RUST_LOG=debug
+    depends_on: [redis]
+    
+  backend_mock:
+    image: hashicorp/http-echo
+    command: -text="Hello from Shielded Backend"
+```
+
+### 14.2 Setup Script (`scripts/setup-dev.sh`)
+Installs dependencies on Ubuntu/Debian dev machine.
+
+```bash
+#!/bin/bash
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential clang llvm libbpf-dev \
+    haproxy redis-tools tor \
+    pkg-config libssl-dev
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Install BPF Tools
+cargo install bpf-linker
+```
+
+---
+
+# 15. Security Hardening
+*OS-Level protections.*
+
+### 15.1 SSH Hardening (`/etc/ssh/sshd_config`)
+```ssh
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AllowUsers admin_user
+Port 2222
+```
+
+### 15.2 Firewall (UFW)
+Strict deny-by-default.
+
+```bash
+ufw default deny incoming
+ufw default allow outgoing
+
+# Allow SSH (Custom Port)
+ufw allow 2222/tcp
+
+# Allow WireGuard (VPN)
+ufw allow 51820/udp
+
+# Allow Tor (if not using system Tor)
+# Note: Tor usually makes outbound connections, so incoming port open not needed 
+# unless running a Relay. For Onion Service, NO incoming ports needed except SSH/WG.
+
+ufw enable
+```
