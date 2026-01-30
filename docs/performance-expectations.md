@@ -5,27 +5,37 @@
 
 ---
 
-## 1. The Scaling Model
-Cerberus scales differently at each layer depending on the resource type.
+## 1. The Scaling Model & Defense Modes
+Cerberus scales differently at each layer depending on the resource type and the **L2 Defense Mode** (Plan A-D).
 
 | Layer | Primary Constraint | Scaling Factor |
 |-------|--------------------|----------------|
-| **L0 (XDP)** | **CPU Cores** & NIC | Can drop ~1.5M PPS per dedicated core (Native Mode). |
+| **L0 (XDP)** | **CPU Cores** & NIC | See "Defense Mode Derating" below. |
 | **L4 (HAProxy)** | **RAM** & CPU | 100k Stick Table entries ≈ 50MB RAM. Connection handling is cheap. |
 | **L7 (Nginx)** | **CPU** | SSL termination (if any) and Request Parsing. |
 | **L7+ (Fortify)** | **CPU** (Gen) / **RAM** (Storage) | Generating CAPTCHAs is heavy. Serving from Ammo Box is cheap. |
 | **Tor Daemon** | **Single Core Speed** | Tor is single-threaded. 1 Instance ≈ 50-80 Mbps throughput. |
 
-**The Bottleneck:** For legitimate traffic, **Tor is the bottleneck**. For Attack traffic, **XDP/CPU** is the limit.
+### Defense Mode Derating (L2/L3 Capacity)
+The "Attack Resilience" depends heavily on which mode Cerberus was able to load.
+
+| Mode | Technology | Performance (PPS/Core) | Efficiency | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Plan A** | **Native XDP** | ~1,500,000 PPS | 100% | Requires hardware support. |
+| **Plan B** | **Generic XDP** | ~800,000 PPS | ~55% | Standard fallback (SKB mode). |
+| **Plan C** | **TC eBPF** | ~600,000 PPS | ~40% | Robust, works on almost all kernels. |
+| **Plan D** | **Nftables** | ~200,000 PPS | ~15% | Emergency fallback. CPU spikes fast. |
 
 ---
 
-## 2. Capacity Estimates by Hardware Tier
+## 2. Capacity Estimates by Hardware Tier (Plan A - Native)
 
 **Definitions:**
 *   **Attack PPS:** Max Packets Per Second (Volumetric Flood) the system can drop without crashing.
 *   **Legit RPS:** Max HTTP Requests Per Second from verified humans (Tor throughput limited).
 *   **Max Concurrent:** Max simultaneous TCP connections (Stick Table capacity).
+
+> **Note:** If running Plan B/C, multiply "Attack Resilience" by **0.5**. If Plan D, by **0.15**.
 
 | Hardware Tier (Cores / RAM) | Attack Resilience (PPS) | Legit Traffic (RPS) | Max Concurrent Conns | Primary Bottleneck | Recommended Role |
 | :--- | :--- | :--- | :--- | :--- | :--- |
