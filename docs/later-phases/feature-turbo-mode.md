@@ -46,13 +46,13 @@ Run multiple independent Tor daemons on the same machine and aggregate them into
 ### 1. The Concept
 Cerberus treats Tor Intro Points as **Disposable Munitions**. Instead of a static list of entry nodes, the cluster constantly reshuffles its public face using a custom implementation of OnionBalance ("RustBalance").
 
-### 2. The "Roulette" Strategy (Periodic Rotation)
-**Mechanism:** Every 10 minutes, the cluster elects a new Leader and generates a new Descriptor.
--   **T=0:** Descriptor points to Nodes [A, B, C].
--   **T=10:** Descriptor points to Nodes [D, E, F].
--   **Effect:** Attackers targeting [A, B, C] are bombing "Ghost Nodes" that no longer accept new connections. Legitimate new users connect to clean nodes [D, E, F].
+### 2. The "Roulette" Strategy (Panic Mode Only)
+**Mechanism:** In extreme attack scenarios, the cluster can be switched to "Panic Mode".
+-   Every 10 minutes, the cluster elects a new Leader and generates a new Descriptor with a *completely different* set of Intro Points.
+-   **Trade-off:** This introduces connection latency for legitimate users (HSDir propagation delay).
+-   **Use Case:** Only activate when Intro Points are being burned faster than they can recover.
 
-### 3. The "Hydra" Maneuver (Reactive Defense)
+### 3. The "Hydra" Maneuver (Reactive Defense - Default)
 **Mechanism:** Triggered by Intro Flood Detection.
 1.  **Attack:** Node A reports 100% CPU due to Intro Flood.
 2.  **Cut Head:** Cluster immediately removes Node A from the active descriptor.

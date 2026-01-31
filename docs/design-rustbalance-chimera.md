@@ -26,29 +26,24 @@ Traditional OnionBalance architectures have a single "Master" node that publishe
 
 ---
 
-## 3. Protocol Flow: "The Roulette" (3.5 Minute Cycle)
+## 3. Protocol Flow: Stable Leadership & Reactive Rotation
 
-### Phase 1: The Election (T-minus 30 Seconds)
-Nodes must agree on *who* will publish the next descriptor. We avoid heavy consensus (Paxos) in favor of **Deterministic Hashing** or **Redis Locking**.
+### Phase 1: The Election (Stable Default)
+Nodes must agree on *who* will publish the descriptor.
+*   **Default:** The node with the longest uptime (or highest ID) is Leader.
+*   **Failover:** If Leader dies, the next node takes over immediately.
+*   **Goal:** Maintain a stable descriptor to maximize user reachability.
 
-**Proposed Algorithm: The Time-Hash**
-1.  Calculate `Seed = Hash(MasterOnion + CurrentTimeSlot)`.
-2.  Rank all healthy nodes by `Distance(NodeID, Seed)`.
-3.  The node with the closest ID is the **Next Leader**.
-*   *Benefit:* Every node knows who the leader *should* be without chatting. If Node A is dead, everyone knows Node B is next in line.
+### Phase 2: Reactive Rotation ("The Hydra")
+Triggered only when an active Intro Point reports it is under attack (Intro Flood).
+1.  **Report:** Attacked Node signals "Under Siege".
+2.  **Shuffle:** Leader generates a new descriptor excluding the attacked node.
+3.  **Publish:** New descriptor propagates. Attacker traffic is isolated to the "Ghost Node".
 
-### Phase 2: The Shuffle (Descriptor Generation)
-The Leader constructs the new descriptor.
-1.  **Inventory:** Query Redis/Gossip for list of "Healthy" nodes.
-2.  **Selection:** Pick `N` nodes to be **New Intro Points** (e.g., 3 out of 10).
-    *   *Strategy:* Completely replace the previous set if possible.
-    *   *Target Reset:* Attackers targeting the *old* Intro Points are now bombing "Ghost Nodes".
-3.  **Signing:** Use the Crown Jewels (Master Key) to sign the descriptor listing these `N` Intro Points.
-
-### Phase 3: The Reveal (Publication)
-The Leader uploads the signed descriptor to the Tor HSDirs.
-*   **Propagation:** Takes ~30-60 seconds.
-*   **Overlap:** The *old* descriptor is valid until HSDirs update, but new clients fetch the new one.
+### Phase 3: Panic Mode ("The Roulette")
+**Manual Activation Only.**
+*   **Mechanism:** Force-rotate the descriptor every 10 minutes.
+*   **Warning:** Causes connection latency for users. Use only when the cluster is being overwhelmed by a massive, dynamic botnet.
 
 ### Phase 4: The Ghosting (Stale Node Defense)
 *   **Scenario:** Node 1 was an Intro Point in the *Previous* descriptor. It is NOT in the *New* descriptor.
