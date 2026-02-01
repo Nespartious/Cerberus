@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verification Required</title>
+    <title>Sigil - Verification Required</title>
     <style>
         /* Inline CSS - No external resources for privacy */
         * {
@@ -26,74 +26,91 @@
             background: rgba(255, 255, 255, 0.05);
             border-radius: 16px;
             padding: 40px;
-            max-width: 400px;
+            max-width: 420px;
             width: 90%;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-            color: #fff;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
         }
         
-        .subtitle {
+        .brand-logo {
+            font-size: 2rem;
+        }
+        
+        .brand-text h1 {
+            font-size: 1.4rem;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        
+        .brand-text .subtitle {
             color: #888;
-            margin-bottom: 24px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
         
         .captcha-box {
             background: #0f0f1a;
             border-radius: 8px;
-            padding: 16px;
+            padding: 20px;
             margin-bottom: 20px;
             text-align: center;
         }
         
         .captcha-image {
-            max-width: 100%;
-            height: auto;
             border-radius: 4px;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             background: #1a1a2e;
-            min-height: 150px;
+            min-height: 80px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #666;
+            overflow: hidden;
+        }
+        
+        .captcha-image svg {
+            max-width: 100%;
+            height: auto;
         }
         
         .instructions {
             font-size: 0.85rem;
             color: #aaa;
-            margin-bottom: 16px;
+            margin-bottom: 0;
         }
         
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-        
-        .grid-cell {
-            aspect-ratio: 1;
+        .answer-input {
+            width: 100%;
+            padding: 14px 16px;
             background: #2a2a4a;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
             border: 2px solid transparent;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1.2rem;
+            font-family: monospace;
+            letter-spacing: 4px;
+            text-align: center;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
         }
         
-        .grid-cell:hover {
-            background: #3a3a6a;
-        }
-        
-        .grid-cell.selected {
+        .answer-input:focus {
+            outline: none;
             border-color: #4a9eff;
-            background: #2a4a7a;
+            background: #2a3a5a;
+        }
+        
+        .answer-input::placeholder {
+            color: #666;
+            letter-spacing: 2px;
+            text-transform: none;
         }
         
         .submit-btn {
@@ -118,6 +135,29 @@
             transform: translateY(0);
         }
         
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid #444;
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-top: 12px;
+            transition: all 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            border-color: #666;
+            color: #aaa;
+        }
+        
         .footer {
             margin-top: 24px;
             text-align: center;
@@ -135,52 +175,72 @@
             display: none;
         }
         
-        .noscript-notice {
-            background: rgba(255, 193, 7, 0.1);
-            border: 1px solid rgba(255, 193, 7, 0.3);
-            color: #ffc107;
+        .success {
+            background: rgba(77, 255, 77, 0.1);
+            border: 1px solid rgba(77, 255, 77, 0.3);
+            color: #6bff6b;
             padding: 12px;
             border-radius: 8px;
             margin-bottom: 16px;
+            display: none;
+        }
+        
+        .loading {
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔒 Verification Required</h1>
-        <p class="subtitle">Please complete the challenge to continue</p>
-        
-        <!-- No-JS Notice -->
-        <noscript>
-            <div class="noscript-notice">
-                ✓ JavaScript is disabled - Good! This form works without it.
+        <div class="brand">
+            <span class="brand-logo">🔒</span>
+            <div class="brand-text">
+                <h1>Sigil</h1>
+                <p class="subtitle">Human verification required</p>
             </div>
-        </noscript>
+        </div>
         
         <div id="error" class="error"></div>
+        <div id="success" class="success"></div>
         
-        <!-- CAPTCHA Form - Works without JavaScript -->
-        <form method="POST" action="/verify" id="captcha-form">
+        <!-- CAPTCHA Form -->
+        <form id="captcha-form">
             <input type="hidden" name="challenge_id" id="challenge_id" value="">
             
             <div class="captcha-box">
                 <div class="captcha-image" id="captcha-image">
-                    Loading challenge...
+                    <span class="loading">Loading challenge...</span>
                 </div>
                 <p class="instructions" id="instructions">
-                    Click the squares that match the pattern
+                    Type the characters shown above
                 </p>
             </div>
             
-            <!-- 3x3 Grid Selection -->
-            <div class="grid" id="grid">
-                <!-- Grid cells will be generated -->
+            <input type="text" 
+                   class="answer-input" 
+                   id="answer" 
+                   name="answer" 
+                   placeholder="Enter code"
+                   autocomplete="off"
+                   autocapitalize="off"
+                   spellcheck="false"
+                   maxlength="8"
+                   required>
+            
+            <button type="submit" class="submit-btn" id="submit-btn">
+                Verify
+            </button>
+            
+            <div style="text-align: center;">
+                <button type="button" class="refresh-btn" id="refresh-btn">
+                    ↻ New Challenge
+                </button>
             </div>
-            
-            <!-- Hidden inputs for selected positions -->
-            <div id="selected-inputs"></div>
-            
-            <button type="submit" class="submit-btn">Verify</button>
         </form>
         
         <div class="footer">
@@ -188,51 +248,123 @@
         </div>
     </div>
     
-    <!-- Minimal inline script for grid interaction -->
-    <!-- Falls back gracefully if JS disabled -->
     <script>
         (function() {
-            var grid = document.getElementById('grid');
-            var inputs = document.getElementById('selected-inputs');
-            var selected = [];
+            var challengeId = null;
+            var form = document.getElementById('captcha-form');
+            var errorDiv = document.getElementById('error');
+            var successDiv = document.getElementById('success');
+            var submitBtn = document.getElementById('submit-btn');
+            var answerInput = document.getElementById('answer');
             
-            // Generate 3x3 grid
-            for (var i = 0; i < 9; i++) {
-                var cell = document.createElement('div');
-                cell.className = 'grid-cell';
-                cell.dataset.pos = Math.floor(i / 3) + ',' + (i % 3);
-                cell.onclick = function() {
-                    this.classList.toggle('selected');
-                    updateInputs();
-                };
-                grid.appendChild(cell);
+            function showError(msg) {
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
+                successDiv.style.display = 'none';
             }
             
-            function updateInputs() {
-                inputs.innerHTML = '';
-                var cells = grid.querySelectorAll('.selected');
-                for (var i = 0; i < cells.length; i++) {
-                    var input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'pos[]';
-                    input.value = cells[i].dataset.pos;
-                    inputs.appendChild(input);
+            function showSuccess(msg) {
+                successDiv.textContent = msg;
+                successDiv.style.display = 'block';
+                errorDiv.style.display = 'none';
+            }
+            
+            function hideMessages() {
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+            }
+            
+            function loadChallenge() {
+                hideMessages();
+                var imgDiv = document.getElementById('captcha-image');
+                imgDiv.innerHTML = '<span class="loading">Loading challenge...</span>';
+                answerInput.value = '';
+                answerInput.focus();
+                
+                fetch('/challenge')
+                    .then(function(r) { 
+                        if (!r.ok) throw new Error('Failed to load');
+                        return r.json(); 
+                    })
+                    .then(function(data) {
+                        challengeId = data.challenge_id;
+                        document.getElementById('challenge_id').value = challengeId;
+                        document.getElementById('instructions').textContent = data.instructions || 'Type the characters shown above';
+                        
+                        // Decode base64 SVG and display
+                        if (data.image_data && data.image_data.startsWith('data:image/svg+xml;base64,')) {
+                            var svgData = atob(data.image_data.split(',')[1]);
+                            imgDiv.innerHTML = svgData;
+                        } else {
+                            imgDiv.innerHTML = '<img src="' + data.image_data + '" alt="CAPTCHA">';
+                        }
+                    })
+                    .catch(function(e) {
+                        imgDiv.innerHTML = '<span style="color:#ff6b6b">Failed to load. Click "New Challenge"</span>';
+                        showError('Could not load CAPTCHA. Please try again.');
+                    });
+            }
+            
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                hideMessages();
+                
+                var answer = answerInput.value.trim();
+                if (!answer) {
+                    showError('Please enter the code shown in the image.');
+                    return;
                 }
-            }
-            
-            // Fetch challenge from API
-            fetch('/challenge')
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    document.getElementById('challenge_id').value = data.challenge_id;
-                    document.getElementById('instructions').textContent = data.instructions;
-                    document.getElementById('captcha-image').innerHTML = 
-                        '<img src="' + data.image_url + '" alt="CAPTCHA">';
+                
+                if (!challengeId) {
+                    showError('No challenge loaded. Please refresh.');
+                    return;
+                }
+                
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Verifying...';
+                
+                fetch('/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        challenge_id: challengeId,
+                        answer: answer
+                    })
                 })
-                .catch(function() {
-                    document.getElementById('captcha-image').textContent = 
-                        'Failed to load. Please refresh.';
+                .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+                .then(function(res) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Verify';
+                    
+                    if (res.ok && res.data.success) {
+                        showSuccess('✓ Verified! Redirecting...');
+                        // Store passport token and redirect
+                        var token = res.data.passport_token;
+                        setTimeout(function() {
+                            window.location.href = '/app/?passport_token=' + encodeURIComponent(token);
+                        }, 1000);
+                    } else {
+                        showError(res.data.error || 'Incorrect. Please try again.');
+                        loadChallenge(); // Get new challenge on failure
+                    }
+                })
+                .catch(function(e) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Verify';
+                    showError('Verification failed. Please try again.');
+                    loadChallenge();
                 });
+            });
+            
+            document.getElementById('refresh-btn').addEventListener('click', loadChallenge);
+            
+            // Auto-submit when 5+ characters entered (common pattern)
+            answerInput.addEventListener('input', function() {
+                // Just for UX feedback, don't auto-submit
+            });
+            
+            // Load initial challenge
+            loadChallenge();
         })();
     </script>
 </body>

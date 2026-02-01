@@ -49,6 +49,31 @@ soft_lock_duration_secs = 1800
 # Ban duration in seconds (default: 1 hour)
 ban_duration_secs = 3600
 
+# --- Backend Configuration ---
+[backend]
+# The actual .onion service to protect
+upstream_url = "http://sigilahzwq5u34gdh2bl3ymokyc7kobika55kyhztsucdoub73hz7qid.onion/"
+
+# Vanity prefix (first 5-6 chars of onion address, used for branding)
+vanity_prefix = "sigil"
+
+# Display name for the protected service
+service_name = "Sigil"
+
+# --- Development/Testing Variables ---
+[dev]
+# Enable development mode (relaxed security, verbose logging)
+enabled = true
+
+# Skip CAPTCHA verification for testing (NEVER in production!)
+bypass_captcha = false
+
+# Test circuit ID for manual testing
+test_circuit_id = "test-circuit-001"
+
+# Mock threat level override (set to -1 to use real value)
+mock_threat_level = -1
+
 # --- Cluster Configuration (when cluster_enabled = true) ---
 # [cluster]
 # peer_addresses = ["10.100.0.2:8888", "10.100.0.3:8888"]

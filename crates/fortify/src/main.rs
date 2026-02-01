@@ -12,9 +12,11 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use tracing::{info, Level};
+use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+mod captcha;
+mod circuits;
 mod config;
 mod routes;
 mod state;

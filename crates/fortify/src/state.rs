@@ -6,6 +6,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use cerberus_common::ThreatLevel;
+use crate::captcha::{CaptchaGenerator, CaptchaVerifier};
+use crate::circuits::CircuitTracker;
 use crate::config::AppConfig;
 
 /// Shared application state
@@ -22,6 +24,15 @@ pub struct AppState {
 
     /// Node identifier for clustering
     pub node_id: String,
+
+    /// CAPTCHA generator
+    pub captcha_generator: Arc<CaptchaGenerator>,
+
+    /// CAPTCHA verifier
+    pub captcha_verifier: Arc<CaptchaVerifier>,
+
+    /// Circuit tracker
+    pub circuit_tracker: Arc<CircuitTracker>,
 }
 
 impl AppState {
@@ -38,11 +49,24 @@ impl AppState {
         let threat_level = Arc::new(RwLock::new(ThreatLevel::new(config.initial_threat_level)));
         let node_id = config.node_id.clone();
 
+        // Initialize services
+        let captcha_generator = Arc::new(CaptchaGenerator::new(config.captcha.challenge_ttl_secs));
+        let captcha_verifier = Arc::new(CaptchaVerifier::new(config.captcha.passport_ttl_secs));
+        let circuit_tracker = Arc::new(CircuitTracker::new(
+            cerberus_common::constants::CIRCUIT_TTL_SECS,
+            config.rate_limit.max_failed_attempts,
+            config.rate_limit.soft_lock_duration_secs,
+            config.rate_limit.ban_duration_secs,
+        ));
+
         Ok(Self {
             config,
             redis,
             threat_level,
             node_id,
+            captcha_generator,
+            captcha_verifier,
+            circuit_tracker,
         })
     }
 
@@ -60,7 +84,7 @@ impl AppState {
 
         // Sync to Redis for cluster visibility
         let mut conn = self.redis.clone();
-        conn.set(
+        let _: () = conn.set(
             cerberus_common::constants::redis_keys::THREAT_LEVEL,
             level.value(),
         )

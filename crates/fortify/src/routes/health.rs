@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use redis::AsyncCommands;
 use serde::Serialize;
 
 use crate::state::AppState;

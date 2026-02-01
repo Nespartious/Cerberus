@@ -7,113 +7,126 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use cerberus_common::{CaptchaChallenge, CaptchaResult};
+use cerberus_common::CaptchaResult;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
 pub struct ChallengeQuery {
     /// Circuit ID (from X-Circuit-Id header or query param)
-    circuit_id: Option<String>,
+    pub circuit_id: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct ChallengeResponse {
-    challenge_id: String,
-    image_url: String,
-    grid_size: (u8, u8),
-    instructions: String,
-    expires_in_secs: u32,
+    pub challenge_id: String,
+    pub image_data: String,
+    pub grid_size: (u8, u8),
+    pub instructions: String,
+    pub expires_in_secs: u32,
 }
 
 /// Generate a new CAPTCHA challenge
 pub async fn get_challenge(
     State(state): State<AppState>,
     Query(params): Query<ChallengeQuery>,
-) -> Result<Json<ChallengeResponse>, StatusCode> {
+) -> Result<Json<ChallengeResponse>, (StatusCode, String)> {
+    let mut redis = state.redis.clone();
+
+    // Check if circuit is allowed
+    if let Some(ref circuit_id) = params.circuit_id {
+        let (allowed, reason) = state
+            .circuit_tracker
+            .is_allowed(&mut redis, circuit_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        if !allowed {
+            return Err((
+                StatusCode::FORBIDDEN,
+                reason.unwrap_or_else(|| "Access denied".to_string()),
+            ));
+        }
+    }
+
     let threat_level = state.get_threat_level().await;
     let difficulty = threat_level.captcha_difficulty();
-    let grid_size = difficulty.grid_size();
 
-    // Generate challenge ID
-    let challenge_id = generate_challenge_id();
-
-    // TODO: Generate actual CAPTCHA image
-    // TODO: Store challenge in Redis with expected answer
-
-    tracing::debug!(
-        challenge_id = %challenge_id,
-        circuit_id = ?params.circuit_id,
-        difficulty = ?difficulty,
-        "Generated CAPTCHA challenge"
-    );
+    let challenge = state
+        .captcha_generator
+        .generate(&mut redis, params.circuit_id, difficulty)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(ChallengeResponse {
-        challenge_id: challenge_id.clone(),
-        image_url: format!("/captcha/image/{}", challenge_id),
-        grid_size,
-        instructions: get_instructions_for_difficulty(difficulty),
+        challenge_id: challenge.challenge_id,
+        image_data: challenge.image_data,
+        grid_size: challenge.grid_size,
+        instructions: challenge.instructions,
         expires_in_secs: difficulty.timeout_secs(),
     }))
 }
 
 #[derive(Deserialize)]
 pub struct VerifyRequest {
-    challenge_id: String,
-    /// Grid positions clicked by user (0-indexed)
-    selected_positions: Vec<(u8, u8)>,
+    pub challenge_id: String,
+    /// User's answer (text input for MVP)
+    pub answer: String,
     /// Circuit ID for tracking
-    circuit_id: Option<String>,
+    pub circuit_id: Option<String>,
 }
 
 /// Verify a CAPTCHA response
 pub async fn verify_challenge(
     State(state): State<AppState>,
     Json(payload): Json<VerifyRequest>,
-) -> Result<Json<CaptchaResult>, StatusCode> {
-    // TODO: Lookup challenge from Redis
-    // TODO: Compare selected positions with expected
-    // TODO: Update circuit state based on result
-    // TODO: Generate passport if successful
+) -> Result<Json<CaptchaResult>, (StatusCode, String)> {
+    let mut redis = state.redis.clone();
 
-    tracing::debug!(
-        challenge_id = %payload.challenge_id,
-        circuit_id = ?payload.circuit_id,
-        selections = ?payload.selected_positions,
-        "Verifying CAPTCHA"
-    );
+    // Check if circuit is allowed
+    if let Some(ref circuit_id) = payload.circuit_id {
+        let (allowed, reason) = state
+            .circuit_tracker
+            .is_allowed(&mut redis, circuit_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Placeholder response
-    Ok(Json(CaptchaResult {
-        success: false,
-        remaining_challenges: 0,
-        passport_token: None,
-        error_message: Some("Not implemented yet".to_string()),
-    }))
-}
-
-/// Generate a cryptographically random challenge ID
-fn generate_challenge_id() -> String {
-    use rand::Rng;
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-
-    let mut bytes = [0u8; 16];
-    rand::rng().fill(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-fn get_instructions_for_difficulty(difficulty: cerberus_common::CaptchaDifficulty) -> String {
-    match difficulty {
-        cerberus_common::CaptchaDifficulty::Easy => {
-            "Click all squares containing a cat".to_string()
-        }
-        cerberus_common::CaptchaDifficulty::Medium => {
-            "Click all squares containing animals, in order from left to right".to_string()
-        }
-        cerberus_common::CaptchaDifficulty::Hard => {
-            "Click the squares matching the pattern shown above".to_string()
-        }
-        cerberus_common::CaptchaDifficulty::Extreme => {
-            "Solve the puzzle within 20 seconds".to_string()
+        if !allowed {
+            return Err((
+                StatusCode::FORBIDDEN,
+                reason.unwrap_or_else(|| "Access denied".to_string()),
+            ));
         }
     }
+
+    let result = state
+        .captcha_verifier
+        .verify(
+            &mut redis,
+            &payload.challenge_id,
+            &payload.answer,
+            payload.circuit_id.as_deref(),
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Update circuit state
+    if let Some(ref circuit_id) = payload.circuit_id {
+        if result.success {
+            if let Some(ref token) = result.passport_token {
+                let expires = chrono::Utc::now().timestamp()
+                    + state.config.captcha.passport_ttl_secs as i64;
+                let _ = state
+                    .circuit_tracker
+                    .record_success(&mut redis, circuit_id, token, expires)
+                    .await;
+            }
+        } else {
+            let _ = state
+                .circuit_tracker
+                .record_failure(&mut redis, circuit_id)
+                .await;
+        }
+    }
+
+    Ok(Json(result))
 }
