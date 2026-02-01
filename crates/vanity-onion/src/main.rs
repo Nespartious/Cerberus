@@ -31,6 +31,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::rngs::OsRng;
 use rayon::prelude::*;
+use sha2::{Digest as Sha2Digest, Sha512};
 use sha3::{Digest, Sha3_256};
 
 /// Cerberus Vanity Onion Address Generator
@@ -316,18 +317,35 @@ fn save_keys(
 ) -> std::io::Result<()> {
     std::fs::create_dir_all(output_dir)?;
 
-    // hs_ed25519_secret_key (Tor format: "== ed25519v1-secret: type0 ==" + 64 bytes)
+    // hs_ed25519_secret_key (Tor format: header + 64-byte expanded secret key)
+    // Tor expects the expanded secret key, not the seed!
+    // Format: "== ed25519v1-secret: type0 ==" (29 bytes) + 3 null bytes + 64 byte expanded key
     let mut secret_file = output_dir.clone();
     secret_file.push("hs_ed25519_secret_key");
 
     let header = b"== ed25519v1-secret: type0 ==\x00\x00\x00";
-    let expanded = secret_key.to_keypair_bytes();
+    
+    // Compute the expanded secret key the same way Ed25519 does:
+    // h = SHA512(seed), then clamp h[0..32] for the scalar, h[32..64] for nonce
+    let seed_bytes = secret_key.to_bytes();
+    let mut hasher = Sha512::new();
+    hasher.update(&seed_bytes);
+    let hash_result = hasher.finalize();
+    
+    let mut expanded_bytes = [0u8; 64];
+    expanded_bytes.copy_from_slice(&hash_result);
+    
+    // Apply Ed25519 clamping to the first 32 bytes (the scalar)
+    expanded_bytes[0] &= 248;
+    expanded_bytes[31] &= 127;
+    expanded_bytes[31] |= 64;
+    
     let mut secret_data = Vec::with_capacity(32 + 64);
     secret_data.extend_from_slice(header);
-    secret_data.extend_from_slice(&expanded);
+    secret_data.extend_from_slice(&expanded_bytes);
     std::fs::write(&secret_file, &secret_data)?;
 
-    // hs_ed25519_public_key (Tor format: "== ed25519v1-public: type0 ==" + 32 bytes)
+    // hs_ed25519_public_key (Tor format: header + 32-byte public key)
     let mut public_file = output_dir.clone();
     public_file.push("hs_ed25519_public_key");
 
