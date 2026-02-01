@@ -102,3 +102,9 @@ prometheus/data/
 *.tar.gz
 *.zip
 backup/
+
+# Generated vanity keys (sensitive!)
+keys/
+
+# Generated vanity keys (sensitive!)
+keys/

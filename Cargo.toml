@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/fortify",
     "crates/cerberus-common",
+    "crates/vanity-onion",
 ]
 
 [workspace.package]
