@@ -39,6 +39,7 @@ dotenvy.workspace = true
 crossbeam-queue = "0.3"
 bincode = "1.3"
 futures = "0.3"
+urlencoding = "2.1"
 
 # Passport Protocol (ed25519-dalek uses rand_core 0.6, need compatible rand)
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
