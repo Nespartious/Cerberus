@@ -40,6 +40,8 @@ FORTIFY_BIN="/usr/local/bin/fortify"
 SYSTEMD_DIR="/etc/systemd/system"
 INSTALL_DIR="/opt/cerberus"
 RUST_USER="cerberus"
+DASHBOARD_PORT="9999"
+HAS_DISPLAY=false
 
 # =============================================================================
 # COLORS
@@ -57,6 +59,26 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 log_error()   { echo -e "${RED}[✗]${NC} $1"; }
+
+# =============================================================================
+# DETECT DISPLAY ENVIRONMENT
+# =============================================================================
+detect_display() {
+    # Check for various display indicators
+    if [[ -n "$DISPLAY" ]]; then
+        HAS_DISPLAY=true
+        log_success "Display detected: X11 (DISPLAY=$DISPLAY)"
+    elif [[ -n "$WAYLAND_DISPLAY" ]]; then
+        HAS_DISPLAY=true
+        log_success "Display detected: Wayland"
+    elif command -v xdg-open &> /dev/null && xdpyinfo &> /dev/null 2>&1; then
+        HAS_DISPLAY=true
+        log_success "Display detected: X11 via xdpyinfo"
+    else
+        HAS_DISPLAY=false
+        log_info "No display detected (headless mode)"
+    fi
+}
 
 # =============================================================================
 # BANNER
@@ -688,9 +710,81 @@ verify_deployment() {
     echo "    systemctl status fortify haproxy nginx tor"
     echo "    systemctl restart fortify"
     echo ""
+    echo "  DASHBOARD:"
+    echo "    python3 $INSTALL_DIR/deploy/dashboard_server.py"
+    echo "    Then open: http://127.0.0.1:$DASHBOARD_PORT/"
+    echo ""
     echo "  NOTE: Tor needs 1-5 minutes to publish the onion address"
     echo "════════════════════════════════════════════════════════════════"
     echo ""
+}
+
+# =============================================================================
+# LAUNCH DASHBOARD (IF DISPLAY AVAILABLE)
+# =============================================================================
+launch_dashboard() {
+    if [[ "$HAS_DISPLAY" != true ]]; then
+        log_info "No display - skipping dashboard launch"
+        log_info "To view dashboard later, run:"
+        echo "    python3 $INSTALL_DIR/deploy/dashboard_server.py &"
+        echo "    xdg-open http://127.0.0.1:$DASHBOARD_PORT/"
+        return
+    fi
+    
+    log_info "Launching deployment dashboard..."
+    
+    # Start the dashboard server in background
+    nohup python3 "$INSTALL_DIR/deploy/dashboard_server.py" > /var/log/cerberus/dashboard.log 2>&1 &
+    DASHBOARD_PID=$!
+    
+    # Wait for server to start
+    sleep 2
+    
+    # Check if server is running
+    if kill -0 $DASHBOARD_PID 2>/dev/null; then
+        log_success "Dashboard server started (PID: $DASHBOARD_PID)"
+        
+        # Try to open browser
+        DASHBOARD_URL="http://127.0.0.1:$DASHBOARD_PORT/"
+        
+        if command -v xdg-open &> /dev/null; then
+            xdg-open "$DASHBOARD_URL" 2>/dev/null &
+            log_success "Opened dashboard in browser: $DASHBOARD_URL"
+        elif command -v gnome-open &> /dev/null; then
+            gnome-open "$DASHBOARD_URL" 2>/dev/null &
+            log_success "Opened dashboard in browser: $DASHBOARD_URL"
+        elif command -v firefox &> /dev/null; then
+            firefox "$DASHBOARD_URL" 2>/dev/null &
+            log_success "Opened dashboard in Firefox: $DASHBOARD_URL"
+        elif command -v chromium-browser &> /dev/null; then
+            chromium-browser "$DASHBOARD_URL" 2>/dev/null &
+            log_success "Opened dashboard in Chromium: $DASHBOARD_URL"
+        else
+            log_warn "Could not detect browser. Open manually: $DASHBOARD_URL"
+        fi
+        
+        # Create systemd service for dashboard
+        cat > "$SYSTEMD_DIR/cerberus-dashboard.service" << EOF
+[Unit]
+Description=Cerberus Deployment Dashboard
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 $INSTALL_DIR/deploy/dashboard_server.py
+Restart=on-failure
+RestartSec=5
+User=root
+WorkingDirectory=$INSTALL_DIR/deploy
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        log_success "Dashboard service installed (cerberus-dashboard.service)"
+    else
+        log_warn "Dashboard server failed to start"
+    fi
 }
 
 # =============================================================================
@@ -701,6 +795,7 @@ main() {
     
     check_root
     check_os
+    detect_display
     prepare_system
     install_base_deps
     install_rust
@@ -716,6 +811,7 @@ main() {
     apply_kernel_tuning
     start_services
     verify_deployment
+    launch_dashboard
 }
 
 main "$@"

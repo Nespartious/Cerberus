@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cerberus - Deployment Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent-red: #f85149;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-blue: #58a6ff;
+            --accent-purple: #a371f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            font-size: 2rem;
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--accent-red), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo span {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 2rem;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.green { background: var(--accent-green); }
+        .status-dot.yellow { background: var(--accent-yellow); }
+        .status-dot.red { background: var(--accent-red); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            height: calc(100vh - 70px);
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.875rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        .service-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .service-item:hover {
+            background: var(--border);
+        }
+
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .service-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .service-name {
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+
+        .service-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .service-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .service-status.running {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--accent-green);
+        }
+
+        .service-status.stopped {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--accent-red);
+        }
+
+        .service-status.starting {
+            background: rgba(210, 153, 34, 0.15);
+            color: var(--accent-yellow);
+        }
+
+        .onion-box {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .onion-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .onion-address {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-purple);
+            word-break: break-all;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .onion-address:hover {
+            color: var(--accent-blue);
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .log-controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .log-btn {
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .log-btn:hover {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+
+        .log-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        .log-viewer {
+            flex: 1;
+            background: #0a0a0a;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .log-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .log-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .log-action-btn {
+            padding: 0.25rem 0.5rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+
+        .log-action-btn:hover {
+            background: var(--border);
+        }
+
+        .log-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        .log-line {
+            display: flex;
+            gap: 1rem;
+            padding: 0.125rem 0;
+        }
+
+        .log-time {
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+
+        .log-level {
+            flex-shrink: 0;
+            padding: 0 0.25rem;
+            border-radius: 2px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .log-level.info { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+        .log-level.warn { background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow); }
+        .log-level.error { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .log-level.debug { background: rgba(139, 148, 158, 0.2); color: var(--text-secondary); }
+
+        .log-msg {
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .stat-item {
+            background: var(--bg-tertiary);
+            padding: 0.75rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .refresh-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            padding: 0.75rem 1rem;
+            background: var(--accent-green);
+            color: white;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            opacity: 0;
+            transform: translateY(1rem);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <span class="logo-icon">🔱</span>
+            <div>
+                <h1>CERBERUS</h1>
+                <span>Deployment Dashboard</span>
+            </div>
+        </div>
+        <div class="header-status">
+            <span class="status-dot green" id="globalStatusDot"></span>
+            <span id="globalStatusText">All Systems Operational</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar">
+            <div class="card">
+                <div class="card-header">
+                    🧅 Onion Addresses
+                </div>
+                <div class="card-body">
+                    <div class="onion-box">
+                        <div class="onion-label">Mirror (Cerberus)</div>
+                        <div class="onion-address" id="mirrorAddress" onclick="copyAddress(this)">Loading...</div>
+                    </div>
+                    <div class="onion-box">
+                        <div class="onion-label">Backend (Protected)</div>
+                        <div class="onion-address" id="backendAddress" onclick="copyAddress(this)">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    ⚡ Services
+                    <div class="refresh-indicator">
+                        <div class="spinner" id="refreshSpinner" style="display: none;"></div>
+                        <span id="lastUpdate">--</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="service-grid" id="serviceGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">📊 Statistics</div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="statRequests">0</div>
+                            <div class="stat-label">Requests</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="statBlocked">0</div>
+                            <div class="stat-label">Blocked</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="statCaptchas">0</div>
+                            <div class="stat-label">CAPTCHAs</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="statUptime">0m</div>
+                            <div class="stat-label">Uptime</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="card-header">
+                    <div class="log-controls">
+                        <button class="log-btn active" data-source="all" onclick="setLogSource('all')">All Logs</button>
+                        <button class="log-btn" data-source="fortify" onclick="setLogSource('fortify')">🛡️ Fortify</button>
+                        <button class="log-btn" data-source="tor" onclick="setLogSource('tor')">🧅 Tor</button>
+                        <button class="log-btn" data-source="haproxy" onclick="setLogSource('haproxy')">⚖️ HAProxy</button>
+                        <button class="log-btn" data-source="nginx" onclick="setLogSource('nginx')">🌐 Nginx</button>
+                        <button class="log-btn" data-source="redis" onclick="setLogSource('redis')">💾 Redis</button>
+                    </div>
+                </div>
+                <div class="log-viewer">
+                    <div class="log-header">
+                        <div class="log-title">
+                            <span>📜</span>
+                            <span id="logSourceTitle">All Logs</span>
+                        </div>
+                        <div class="log-actions">
+                            <button class="log-action-btn" onclick="toggleAutoScroll()">
+                                <span id="autoScrollIcon">⏬</span> Auto-scroll
+                            </button>
+                            <button class="log-action-btn" onclick="clearLogs()">🗑️ Clear</button>
+                            <button class="log-action-btn" onclick="downloadLogs()">💾 Download</button>
+                        </div>
+                    </div>
+                    <div class="log-content" id="logContent">
+                        <div class="log-line">
+                            <span class="log-time">--:--:--</span>
+                            <span class="log-level info">INFO</span>
+                            <span class="log-msg">Connecting to log stream...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast" id="toast">Copied to clipboard!</div>
+
+    <script>
+        // Configuration
+        const API_BASE = '';  // Same origin
+        let currentLogSource = 'all';
+        let autoScroll = true;
+        let logs = [];
+        let services = {};
+        let startTime = Date.now();
+
+        // Services definition
+        const serviceConfig = [
+            { id: 'fortify', name: 'Fortify', desc: 'L7+ Logic Engine', icon: '🛡️' },
+            { id: 'tor', name: 'Tor', desc: 'Hidden Service', icon: '🧅' },
+            { id: 'haproxy', name: 'HAProxy', desc: 'L4 Governor', icon: '⚖️' },
+            { id: 'nginx', name: 'Nginx', desc: 'L7 Gatekeeper', icon: '🌐' },
+            { id: 'redis', name: 'Redis', desc: 'State Store', icon: '💾' }
+        ];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderServices();
+            fetchStatus();
+            connectLogStream();
+            setInterval(fetchStatus, 5000);
+            setInterval(updateUptime, 1000);
+        });
+
+        function renderServices() {
+            const grid = document.getElementById('serviceGrid');
+            grid.innerHTML = serviceConfig.map(svc => `
+                <div class="service-item" data-service="${svc.id}">
+                    <div class="service-info">
+                        <div class="service-icon">${svc.icon}</div>
+                        <div>
+                            <div class="service-name">${svc.name}</div>
+                            <div class="service-desc">${svc.desc}</div>
+                        </div>
+                    </div>
+                    <span class="service-status starting" id="status-${svc.id}">checking...</span>
+                </div>
+            `).join('');
+        }
+
+        async function fetchStatus() {
+            const spinner = document.getElementById('refreshSpinner');
+            spinner.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Update services
+                serviceConfig.forEach(svc => {
+                    const status = data.services[svc.id] || 'unknown';
+                    const el = document.getElementById(`status-${svc.id}`);
+                    el.textContent = status;
+                    el.className = `service-status ${status}`;
+                });
+
+                // Update addresses
+                document.getElementById('mirrorAddress').textContent = data.mirror_onion || 'Not available';
+                document.getElementById('backendAddress').textContent = data.backend_onion || 'Not configured';
+
+                // Update stats
+                document.getElementById('statRequests').textContent = formatNumber(data.stats?.requests || 0);
+                document.getElementById('statBlocked').textContent = formatNumber(data.stats?.blocked || 0);
+                document.getElementById('statCaptchas').textContent = formatNumber(data.stats?.captchas || 0);
+
+                // Update global status
+                const allRunning = serviceConfig.every(svc => data.services[svc.id] === 'running');
+                const dot = document.getElementById('globalStatusDot');
+                const text = document.getElementById('globalStatusText');
+                
+                if (allRunning) {
+                    dot.className = 'status-dot green';
+                    text.textContent = 'All Systems Operational';
+                } else {
+                    dot.className = 'status-dot yellow';
+                    text.textContent = 'Some Services Degraded';
+                }
+
+                startTime = data.start_time || startTime;
+
+            } catch (err) {
+                console.error('Status fetch error:', err);
+            }
+
+            spinner.style.display = 'none';
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        function connectLogStream() {
+            const eventSource = new EventSource('/api/logs/stream');
+            
+            eventSource.onmessage = (event) => {
+                const logEntry = JSON.parse(event.data);
+                addLogEntry(logEntry);
+            };
+
+            eventSource.onerror = () => {
+                console.error('Log stream error, retrying...');
+                setTimeout(connectLogStream, 3000);
+            };
+        }
+
+        function addLogEntry(entry) {
+            logs.push(entry);
+            if (logs.length > 1000) logs.shift();
+
+            if (currentLogSource === 'all' || entry.source === currentLogSource) {
+                appendLogLine(entry);
+            }
+        }
+
+        function appendLogLine(entry) {
+            const content = document.getElementById('logContent');
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.innerHTML = `
+                <span class="log-time">${entry.time || '--:--:--'}</span>
+                <span class="log-level ${entry.level || 'info'}">${(entry.level || 'INFO').toUpperCase()}</span>
+                <span class="log-msg">${escapeHtml(entry.message || '')}</span>
+            `;
+            content.appendChild(line);
+
+            if (autoScroll) {
+                content.scrollTop = content.scrollHeight;
+            }
+        }
+
+        function setLogSource(source) {
+            currentLogSource = source;
+            
+            // Update buttons
+            document.querySelectorAll('.log-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.source === source);
+            });
+
+            // Update title
+            const titles = {
+                all: 'All Logs',
+                fortify: 'Fortify Logs',
+                tor: 'Tor Logs',
+                haproxy: 'HAProxy Logs',
+                nginx: 'Nginx Logs',
+                redis: 'Redis Logs'
+            };
+            document.getElementById('logSourceTitle').textContent = titles[source] || 'Logs';
+
+            // Filter and display logs
+            const content = document.getElementById('logContent');
+            content.innerHTML = '';
+            logs.filter(log => source === 'all' || log.source === source)
+                .forEach(log => appendLogLine(log));
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.getElementById('autoScrollIcon').textContent = autoScroll ? '⏬' : '⏸️';
+        }
+
+        function clearLogs() {
+            logs = [];
+            document.getElementById('logContent').innerHTML = '';
+        }
+
+        function downloadLogs() {
+            const filtered = currentLogSource === 'all' ? logs : logs.filter(l => l.source === currentLogSource);
+            const text = filtered.map(l => `${l.time} [${l.level}] [${l.source}] ${l.message}`).join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cerberus-${currentLogSource}-${Date.now()}.log`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyAddress(el) {
+            navigator.clipboard.writeText(el.textContent);
+            showToast('Copied to clipboard!');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function formatNumber(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toString();
+        }
+
+        function updateUptime() {
+            const diff = Math.floor((Date.now() - startTime) / 1000);
+            const hours = Math.floor(diff / 3600);
+            const mins = Math.floor((diff % 3600) / 60);
+            document.getElementById('statUptime').textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
