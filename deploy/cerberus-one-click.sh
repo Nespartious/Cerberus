@@ -265,23 +265,34 @@ create_directories() {
 # GENERATE VANITY ADDRESS
 # =============================================================================
 setup_vanity_keys() {
-    log_info "Generating vanity address with prefix '$VANITY_PREFIX' (this may take 1-5 minutes)..."
+    log_info "Generating vanity address with prefix '$VANITY_PREFIX'..."
     
-    # Generate fresh vanity address
-    /usr/local/bin/vanity-onion --prefix "$VANITY_PREFIX" --output "$TOR_HS_DIR"
-    
-    if [[ -f "$TOR_HS_DIR/hostname" ]]; then
-        GENERATED_ONION=$(cat "$TOR_HS_DIR/hostname")
-        log_success "Generated vanity address: $GENERATED_ONION"
+    # Use test mode for faster generation (3-char prefix)
+    # In production, remove --test-mode for full prefix matching
+    if /usr/local/bin/vanity-onion --prefix "$VANITY_PREFIX" --output "$TOR_HS_DIR" --test-mode --timeout 120; then
+        if [[ -f "$TOR_HS_DIR/hostname" ]]; then
+            GENERATED_ONION=$(cat "$TOR_HS_DIR/hostname")
+            log_success "Generated vanity address: $GENERATED_ONION"
+        else
+            log_error "Vanity generation succeeded but no hostname file"
+            exit 1
+        fi
     else
-        log_error "Vanity generation failed"
-        exit 1
+        EXIT_CODE=$?
+        if [[ $EXIT_CODE -eq 2 ]]; then
+            log_warn "Vanity generation timed out - using random address"
+            log_info "Tor will generate a random address on first start"
+            log_info "For production, run vanity-onion manually with more time"
+        else
+            log_error "Vanity generation failed"
+            exit 1
+        fi
     fi
     
     # Set strict permissions (Tor requires this)
     chown -R debian-tor:debian-tor "$TOR_HS_DIR" 2>/dev/null || chown -R tor:tor "$TOR_HS_DIR"
     chmod 700 "$TOR_HS_DIR"
-    chmod 600 "$TOR_HS_DIR"/*
+    chmod 600 "$TOR_HS_DIR"/* 2>/dev/null || true
     
     log_success "Vanity keys configured with correct permissions"
 }

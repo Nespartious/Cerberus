@@ -54,9 +54,21 @@ struct Args {
     #[arg(short, long, default_value = "1")]
     count: usize,
 
+    /// Maximum attempts before giving up (0 = unlimited)
+    #[arg(long, default_value = "0")]
+    max_attempts: u64,
+
+    /// Maximum time in seconds before giving up (0 = unlimited)
+    #[arg(long, default_value = "0")]
+    timeout: u64,
+
     /// Show estimated time and difficulty
     #[arg(long)]
     estimate: bool,
+
+    /// Test mode: if prefix too long, auto-shorten for faster testing
+    #[arg(long)]
+    test_mode: bool,
 }
 
 /// Tor v3 onion address version byte
@@ -69,11 +81,19 @@ fn main() {
     let args = Args::parse();
 
     // Validate prefix (base32 only: a-z, 2-7)
-    let prefix = args.prefix.to_lowercase();
+    let mut prefix = args.prefix.to_lowercase();
     if !prefix.chars().all(|c| c.is_ascii_lowercase() || ('2'..='7').contains(&c)) {
         eprintln!("Error: Prefix must contain only base32 characters (a-z, 2-7)");
         eprintln!("       Invalid characters will never match");
         std::process::exit(1);
+    }
+
+    // Test mode: shorten prefix if too long for fast testing
+    if args.test_mode && prefix.len() > 3 {
+        let original = prefix.clone();
+        prefix = prefix[..3].to_string();
+        println!("⚡ TEST MODE: Shortened prefix '{}' → '{}' for faster generation", original, prefix);
+        println!();
     }
 
     // Calculate difficulty
@@ -85,6 +105,13 @@ fn main() {
     println!("Prefix: {}", prefix);
     println!("Difficulty: 1 in {}", format_number(difficulty));
     println!("Expected attempts: ~{}", format_number(expected_attempts));
+    
+    if args.max_attempts > 0 {
+        println!("Max attempts: {}", format_number(args.max_attempts));
+    }
+    if args.timeout > 0 {
+        println!("Timeout: {}s", args.timeout);
+    }
 
     if args.estimate {
         // Benchmark first
@@ -127,19 +154,43 @@ fn main() {
     let attempts_clone = Arc::clone(&attempts);
     let found_clone = Arc::clone(&found);
     let pb_clone = pb.clone();
+    let timeout_secs = args.timeout;
+    let max_attempts = args.max_attempts;
     std::thread::spawn(move || {
         while !found_clone.load(Ordering::Relaxed) {
             let count = attempts_clone.load(Ordering::Relaxed);
             let elapsed = start.elapsed().as_secs().max(1);
             let rate = count / elapsed;
+            
+            // Check timeout
+            if timeout_secs > 0 && elapsed >= timeout_secs {
+                found_clone.store(true, Ordering::Relaxed); // Signal to stop
+                pb_clone.set_message(format!("TIMEOUT after {}s", elapsed));
+                break;
+            }
+            
+            // Check max attempts
+            if max_attempts > 0 && count >= max_attempts {
+                found_clone.store(true, Ordering::Relaxed); // Signal to stop
+                pb_clone.set_message(format!("MAX ATTEMPTS reached: {}", format_number(count)));
+                break;
+            }
+            
             pb_clone.set_message(format!(
-                "Attempts: {} | Rate: {}/s",
+                "Attempts: {} | Rate: {}/s | Elapsed: {}s",
                 format_number(count),
-                format_number(rate)
+                format_number(rate),
+                elapsed
             ));
             std::thread::sleep(Duration::from_millis(100));
         }
     });
+
+    // Track if we hit limits
+    let hit_limit = Arc::new(AtomicBool::new(false));
+    let hit_limit_clone = Arc::clone(&hit_limit);
+    let max_attempts_check = args.max_attempts;
+    let timeout_check = args.timeout;
 
     // Generate in parallel
     let result: Option<(SigningKey, String)> = (0..u64::MAX)
@@ -149,7 +200,20 @@ fn main() {
                 return None;
             }
 
-            attempts.fetch_add(1, Ordering::Relaxed);
+            let current = attempts.fetch_add(1, Ordering::Relaxed);
+            
+            // Check limits within worker
+            if max_attempts_check > 0 && current >= max_attempts_check {
+                hit_limit_clone.store(true, Ordering::Relaxed);
+                found.store(true, Ordering::Relaxed);
+                return None;
+            }
+            
+            if timeout_check > 0 && start.elapsed().as_secs() >= timeout_check {
+                hit_limit_clone.store(true, Ordering::Relaxed);
+                found.store(true, Ordering::Relaxed);
+                return None;
+            }
 
             // Generate random keypair
             let signing_key = SigningKey::generate(&mut OsRng);
@@ -167,6 +231,7 @@ fn main() {
 
     let elapsed = start.elapsed();
     let total_attempts = attempts.load(Ordering::Relaxed);
+    let was_limited = hit_limit.load(Ordering::Relaxed);
 
     match result {
         Some((secret_key, onion_address)) => {
@@ -201,7 +266,22 @@ fn main() {
             }
         }
         None => {
-            println!("❌ Search interrupted or failed");
+            if was_limited {
+                println!();
+                println!("⏱️  Search stopped due to limits:");
+                println!("   Attempts: {}", format_number(total_attempts));
+                println!("   Time: {:.2?}", elapsed);
+                println!();
+                println!("💡 Tips:");
+                println!("   - Use a shorter prefix (3-4 chars) for faster results");
+                println!("   - Use --test-mode to auto-shorten long prefixes");
+                println!("   - Increase --timeout or --max-attempts");
+                println!();
+                std::process::exit(2); // Exit code 2 = hit limit
+            } else {
+                println!("❌ Search interrupted or failed");
+                std::process::exit(1);
+            }
         }
     }
 }
