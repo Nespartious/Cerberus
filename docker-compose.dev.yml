@@ -1,0 +1,77 @@
+# ============================================================================
+# Cerberus Development Stack
+# ============================================================================
+# Spins up a complete local development environment with:
+# - Redis (state storage)
+# - HAProxy (connection governor)
+# - Mock backend (simple HTTP server)
+#
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up -d
+#   cargo run -p fortify
+#
+# Access:
+#   Fortify:    http://localhost:8888
+#   HAProxy:    http://localhost:10000 (via Nginx)
+#   HAStats:    http://localhost:8404
+#   Backend:    http://localhost:8080
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # Redis: State storage for circuits, CAPTCHAs, threat level
+  redis:
+    image: redis:7-alpine
+    container_name: cerberus-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - cerberus
+
+  # HAProxy: Connection governor with circuit tracking
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: cerberus-haproxy
+    ports:
+      - "10000:10000"  # Main entry (Tor would connect here)
+      - "8404:8404"    # Stats dashboard
+    volumes:
+      - ./config/haproxy-dev.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - haproxy-socket:/var/run/haproxy
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cerberus
+
+  # Mock backend: Simple HTTP server simulating protected application
+  backend:
+    image: nginx:alpine
+    container_name: cerberus-backend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./static/backend-mock:/usr/share/nginx/html:ro
+    networks:
+      - cerberus
+
+volumes:
+  redis-data:
+  haproxy-socket:
+
+networks:
+  cerberus:
+    driver: bridge

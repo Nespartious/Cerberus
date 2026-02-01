@@ -12,15 +12,19 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 mod captcha;
 mod circuits;
+mod cluster;
 mod config;
+mod haproxy;
 mod routes;
 mod state;
 
+use captcha::{AmmoBox, AmmoBoxConfig, ammo_box_worker};
 use config::AppConfig;
 use state::AppState;
 
@@ -67,8 +71,25 @@ async fn main() -> Result<()> {
     let config = AppConfig::load(&args.config, &args)?;
     info!("📋 Configuration loaded from {}", args.config);
 
+    // Create shutdown broadcast channel
+    let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+
+    // Initialize Ammo Box (pre-generated CAPTCHA pool)
+    let ammo_config = AmmoBoxConfig {
+        ram_capacity: 10_000,
+        ..Default::default()
+    };
+    let ammo_box = Arc::new(AmmoBox::new(ammo_config));
+
+    // Spawn Ammo Box background worker
+    let ammo_clone = ammo_box.clone();
+    let ammo_shutdown = shutdown_tx.subscribe();
+    tokio::spawn(async move {
+        ammo_box_worker(ammo_clone, ammo_shutdown).await;
+    });
+
     // Initialize application state
-    let state = AppState::new(config.clone()).await?;
+    let state = AppState::new(config.clone(), ammo_box).await?;
     info!("✅ Redis connected: {}", config.redis_url);
 
     // Build router
@@ -78,8 +99,21 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
     info!("🚀 Fortify listening on {}", config.listen_addr);
 
-    axum::serve(listener, app).await.context("Server error")?;
+    // Handle graceful shutdown
+    let shutdown_signal = async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+        info!("🛑 Shutdown signal received");
+        let _ = shutdown_tx.send(());
+    };
 
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+        .context("Server error")?;
+
+    info!("👋 Fortify shutdown complete");
     Ok(())
 }
 

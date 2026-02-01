@@ -3,9 +3,11 @@
 //! MVP Implementation: Simple text-based placeholder CAPTCHA.
 //! Production: Will use image-based grid challenges.
 
+mod ammo_box;
 mod generator;
 mod verifier;
 
+pub use ammo_box::{AmmoBox, AmmoBoxConfig, AmmoBoxStatsSnapshot, PregenCaptcha, ammo_box_worker};
 pub use generator::CaptchaGenerator;
 pub use verifier::CaptchaVerifier;
 

@@ -5,7 +5,7 @@ use redis::aio::ConnectionManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::captcha::{CaptchaGenerator, CaptchaVerifier};
+use crate::captcha::{AmmoBox, CaptchaGenerator, CaptchaVerifier};
 use crate::circuits::CircuitTracker;
 use crate::config::AppConfig;
 use cerberus_common::ThreatLevel;
@@ -33,11 +33,14 @@ pub struct AppState {
 
     /// Circuit tracker
     pub circuit_tracker: Arc<CircuitTracker>,
+
+    /// Pre-generated CAPTCHA pool
+    pub ammo_box: Arc<AmmoBox>,
 }
 
 impl AppState {
     /// Create new application state, connecting to Redis
-    pub async fn new(config: AppConfig) -> Result<Self> {
+    pub async fn new(config: AppConfig, ammo_box: Arc<AmmoBox>) -> Result<Self> {
         // Connect to Redis with connection manager (handles reconnection)
         let client = redis::Client::open(config.redis_url.as_str())
             .context("Failed to create Redis client")?;
@@ -67,6 +70,7 @@ impl AppState {
             captcha_generator,
             captcha_verifier,
             circuit_tracker,
+            ammo_box,
         })
     }
 

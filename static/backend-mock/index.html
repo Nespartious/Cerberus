@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Protected Application</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 3rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h1 { color: #4ade80; font-size: 2.5rem; margin-bottom: 1rem; }
+        p { color: #94a3b8; font-size: 1.1rem; }
+        .shield { font-size: 4rem; margin-bottom: 1rem; }
+        .status { 
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(74, 222, 128, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+        .status strong { color: #4ade80; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="shield">🛡️</div>
+        <h1>Welcome to the Protected Zone</h1>
+        <p>You have successfully passed through Cerberus.</p>
+        <div class="status">
+            <strong>Status:</strong> Authenticated<br>
+            <strong>Protection Level:</strong> Active<br>
+            <strong>Backend:</strong> Mock Server v1.0
+        </div>
+    </div>
+</body>
+</html>
