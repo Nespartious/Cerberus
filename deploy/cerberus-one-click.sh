@@ -20,8 +20,7 @@ set -e
 # Backend: The actual Tor hidden service we're protecting
 BACKEND_ONION="sigilahzwq5u34gdh2bl3ymokyc7kobika55kyhztsucdoub73hz7qid.onion"
 
-# Vanity: The generated vanity address for the Cerberus mirror
-VANITY_ONION="sigilz3i4mvlied4mfcpj7v5wsa63cuet3xtt6vfv2nxndfwnn2sjwad.onion"
+# Vanity: Will be GENERATED during deployment (first 5 chars match)
 VANITY_PREFIX="sigil"
 
 # Fortify listen port
@@ -70,7 +69,7 @@ print_banner() {
     echo -e "${RED}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "Backend Target:  ${YELLOW}${BACKEND_ONION}${NC}"
-    echo -e "Vanity Mirror:   ${GREEN}${VANITY_ONION}${NC}"
+    echo -e "Vanity Prefix:   ${GREEN}${VANITY_PREFIX}*${NC} (will be generated)"
     echo ""
 }
 
@@ -196,15 +195,15 @@ clone_project() {
 }
 
 build_fortify() {
-    log_info "Building Fortify (this may take 2-5 minutes)..."
+    log_info "Building Fortify and vanity-onion (this may take 3-7 minutes)..."
     
     cd "$INSTALL_DIR"
     
     # Ensure cargo is available
     source "$HOME/.cargo/env" 2>/dev/null || true
     
-    # Build release binary
-    cargo build --release -p fortify 2>&1 | tail -20
+    # Build release binaries (both fortify and vanity-onion)
+    cargo build --release -p fortify -p vanity-onion 2>&1 | tail -20
     
     if [[ -f "$INSTALL_DIR/target/release/fortify" ]]; then
         cp "$INSTALL_DIR/target/release/fortify" "$FORTIFY_BIN"
@@ -212,6 +211,15 @@ build_fortify() {
         log_success "Fortify built and installed to $FORTIFY_BIN"
     else
         log_error "Fortify build failed"
+        exit 1
+    fi
+    
+    if [[ -f "$INSTALL_DIR/target/release/vanity-onion" ]]; then
+        cp "$INSTALL_DIR/target/release/vanity-onion" /usr/local/bin/vanity-onion
+        chmod +x /usr/local/bin/vanity-onion
+        log_success "vanity-onion built and installed"
+    else
+        log_error "vanity-onion build failed"
         exit 1
     fi
 }
@@ -232,31 +240,28 @@ create_directories() {
 }
 
 # =============================================================================
-# GENERATE VANITY KEYS (OR USE EXISTING)
+# GENERATE VANITY ADDRESS
 # =============================================================================
 setup_vanity_keys() {
-    log_info "Setting up vanity keys..."
+    log_info "Generating vanity address with prefix '$VANITY_PREFIX' (this may take 1-5 minutes)..."
     
-    # Check if keys exist in the cloned repo
-    KEYS_SRC="$INSTALL_DIR/keys/sigil-mirror"
+    # Generate fresh vanity address
+    /usr/local/bin/vanity-onion --prefix "$VANITY_PREFIX" --output "$TOR_HS_DIR"
     
-    if [[ -f "$KEYS_SRC/hs_ed25519_secret_key" ]]; then
-        log_info "Using pre-generated vanity keys from repository"
-        cp "$KEYS_SRC/hs_ed25519_secret_key" "$TOR_HS_DIR/"
-        cp "$KEYS_SRC/hs_ed25519_public_key" "$TOR_HS_DIR/"
-        cp "$KEYS_SRC/hostname" "$TOR_HS_DIR/"
+    if [[ -f "$TOR_HS_DIR/hostname" ]]; then
+        GENERATED_ONION=$(cat "$TOR_HS_DIR/hostname")
+        log_success "Generated vanity address: $GENERATED_ONION"
     else
-        log_warn "No vanity keys found in repo - generating new random address"
-        log_warn "For production, generate vanity keys with: vanity-onion --prefix $VANITY_PREFIX"
-        # Tor will auto-generate keys on first start
+        log_error "Vanity generation failed"
+        exit 1
     fi
     
     # Set strict permissions (Tor requires this)
     chown -R debian-tor:debian-tor "$TOR_HS_DIR" 2>/dev/null || chown -R tor:tor "$TOR_HS_DIR"
     chmod 700 "$TOR_HS_DIR"
-    chmod 600 "$TOR_HS_DIR"/* 2>/dev/null || true
+    chmod 600 "$TOR_HS_DIR"/*
     
-    log_success "Vanity keys configured"
+    log_success "Vanity keys configured with correct permissions"
 }
 
 # =============================================================================

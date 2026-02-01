@@ -46,16 +46,16 @@ The deployment script uses these test values:
 
 ```
 Backend (protected service): sigilahzwq5u34gdh2bl3ymokyc7kobika55kyhztsucdoub73hz7qid.onion
-Vanity Mirror Address:       sigilz3i4mvlied4mfcpj7v5wsa63cuet3xtt6vfv2nxndfwnn2sjwad.onion  
-Vanity Prefix:               sigil
+Vanity Prefix:               sigil (5 chars - address generated during deployment)
 ```
+
+The script will **generate a fresh vanity address** matching the prefix during deployment.
 
 To change these, edit the variables at the top of `deploy/cerberus-one-click.sh`:
 
 ```bash
 BACKEND_ONION="your-backend.onion"
-VANITY_ONION="your-vanity.onion"
-VANITY_PREFIX="prefix"
+VANITY_PREFIX="prefix"  # First N characters of generated .onion
 ```
 
 ---
