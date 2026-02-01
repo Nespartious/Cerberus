@@ -1,0 +1,57 @@
+# Cerberus Fortify Configuration
+# L7+ Logic Engine Settings
+#
+# Location: /etc/cerberus/fortify.toml (production)
+#           config/fortify.toml (development)
+
+# Redis connection URL
+# Use redis://127.0.0.1:6379 for single node
+# Use redis-cluster://node1:6379,node2:6379,node3:6379 for cluster
+redis_url = "redis://127.0.0.1:6379"
+
+# HTTP listen address
+# Use 127.0.0.1:8888 for TCP socket
+# Use /var/run/fortify.sock for Unix socket (recommended for production)
+listen_addr = "127.0.0.1:8888"
+
+# Initial threat level (0-10)
+# 0: No CAPTCHAs (development only)
+# 5: Standard protection (default)
+# 10: Maximum lockdown
+initial_threat_level = 5
+
+# Enable cluster mode for multi-node deployments
+cluster_enabled = false
+
+# This node's unique ID (auto-generated if not set)
+# node_id = "node-primary"
+
+[captcha]
+# Path to font file for CAPTCHA text generation
+font_path = "assets/fonts/DejaVuSans.ttf"
+
+# Passport token validity in seconds (default: 10 minutes)
+passport_ttl_secs = 600
+
+# Challenge validity in seconds (default: 5 minutes)
+challenge_ttl_secs = 300
+
+[rate_limit]
+# Maximum requests per minute per circuit
+max_requests_per_minute = 60
+
+# Maximum failed CAPTCHAs before soft-lock
+max_failed_attempts = 5
+
+# Soft-lock duration in seconds (default: 30 minutes)
+soft_lock_duration_secs = 1800
+
+# Ban duration in seconds (default: 1 hour)
+ban_duration_secs = 3600
+
+# --- Cluster Configuration (when cluster_enabled = true) ---
+# [cluster]
+# peer_addresses = ["10.100.0.2:8888", "10.100.0.3:8888"]
+# wireguard_interface = "wg0"
+# heartbeat_interval_secs = 5
+# node_timeout_secs = 15

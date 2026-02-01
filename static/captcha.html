@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Required</title>
+    <style>
+        /* Inline CSS - No external resources for privacy */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e0e0e0;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        
+        .subtitle {
+            color: #888;
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+        
+        .captcha-box {
+            background: #0f0f1a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .captcha-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            background: #1a1a2e;
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        }
+        
+        .instructions {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 16px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .grid-cell {
+            aspect-ratio: 1;
+            background: #2a2a4a;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        
+        .grid-cell:hover {
+            background: #3a3a6a;
+        }
+        
+        .grid-cell.selected {
+            border-color: #4a9eff;
+            background: #2a4a7a;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #4a9eff 0%, #3a7edf 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        
+        .error {
+            background: rgba(255, 77, 77, 0.1);
+            border: 1px solid rgba(255, 77, 77, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        
+        .noscript-notice {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            color: #ffc107;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Verification Required</h1>
+        <p class="subtitle">Please complete the challenge to continue</p>
+        
+        <!-- No-JS Notice -->
+        <noscript>
+            <div class="noscript-notice">
+                ✓ JavaScript is disabled - Good! This form works without it.
+            </div>
+        </noscript>
+        
+        <div id="error" class="error"></div>
+        
+        <!-- CAPTCHA Form - Works without JavaScript -->
+        <form method="POST" action="/verify" id="captcha-form">
+            <input type="hidden" name="challenge_id" id="challenge_id" value="">
+            
+            <div class="captcha-box">
+                <div class="captcha-image" id="captcha-image">
+                    Loading challenge...
+                </div>
+                <p class="instructions" id="instructions">
+                    Click the squares that match the pattern
+                </p>
+            </div>
+            
+            <!-- 3x3 Grid Selection -->
+            <div class="grid" id="grid">
+                <!-- Grid cells will be generated -->
+            </div>
+            
+            <!-- Hidden inputs for selected positions -->
+            <div id="selected-inputs"></div>
+            
+            <button type="submit" class="submit-btn">Verify</button>
+        </form>
+        
+        <div class="footer">
+            Protected by Cerberus • No tracking • No cookies
+        </div>
+    </div>
+    
+    <!-- Minimal inline script for grid interaction -->
+    <!-- Falls back gracefully if JS disabled -->
+    <script>
+        (function() {
+            var grid = document.getElementById('grid');
+            var inputs = document.getElementById('selected-inputs');
+            var selected = [];
+            
+            // Generate 3x3 grid
+            for (var i = 0; i < 9; i++) {
+                var cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                cell.dataset.pos = Math.floor(i / 3) + ',' + (i % 3);
+                cell.onclick = function() {
+                    this.classList.toggle('selected');
+                    updateInputs();
+                };
+                grid.appendChild(cell);
+            }
+            
+            function updateInputs() {
+                inputs.innerHTML = '';
+                var cells = grid.querySelectorAll('.selected');
+                for (var i = 0; i < cells.length; i++) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'pos[]';
+                    input.value = cells[i].dataset.pos;
+                    inputs.appendChild(input);
+                }
+            }
+            
+            // Fetch challenge from API
+            fetch('/challenge')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    document.getElementById('challenge_id').value = data.challenge_id;
+                    document.getElementById('instructions').textContent = data.instructions;
+                    document.getElementById('captcha-image').innerHTML = 
+                        '<img src="' + data.image_url + '" alt="CAPTCHA">';
+                })
+                .catch(function() {
+                    document.getElementById('captcha-image').textContent = 
+                        'Failed to load. Please refresh.';
+                });
+        })();
+    </script>
+</body>
+</html>

@@ -7,9 +7,14 @@ state/
 *.log
 
 # Rust build artifacts
-keeper/target/
-keeper/Cargo.lock
+target/
+Cargo.lock
 **/*.rs.bk
+
+# XDP/eBPF build artifacts
+xdp/build/
+*.o
+!xdp/*.c
 
 # User configuration (contains secrets)
 cerberus.conf

@@ -1,0 +1,39 @@
+[package]
+name = "fortify"
+description = "Cerberus L7+ Logic Engine - CAPTCHA verification, Threat Dial, and cluster coordination"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fortify"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+cerberus-common = { path = "../cerberus-common" }
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+redis.workspace = true
+clap.workspace = true
+rand.workspace = true
+sha2.workspace = true
+base64.workspace = true
+image.workspace = true
+imageproc.workspace = true
+rusttype.workspace = true
+chrono.workspace = true
+config.workspace = true
+dotenvy.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
