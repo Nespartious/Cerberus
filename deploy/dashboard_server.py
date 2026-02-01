@@ -56,13 +56,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception as e:
                     services[svc.replace("-server", "")] = "error"
             
-            # Get onion addresses
+            # Get onion addresses - try multiple locations
             mirror_onion = None
-            try:
-                with open("/var/lib/tor/cerberus_hs/hostname", "r") as f:
-                    mirror_onion = f.read().strip()
-            except:
-                pass
+            for path in ["/etc/cerberus/onion_hostname", "/var/lib/tor/cerberus_hs/hostname"]:
+                try:
+                    with open(path, "r") as f:
+                        mirror_onion = f.read().strip()
+                        break
+                except:
+                    continue
             
             response = {
                 "services": services,
