@@ -1,10 +1,6 @@
 //! Health check endpoints.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::Serialize;
 
 use crate::state::AppState;
@@ -30,9 +26,7 @@ pub struct ReadyResponse {
 }
 
 /// Readiness check (are all dependencies healthy?)
-pub async fn ready_check(
-    State(state): State<AppState>,
-) -> Result<Json<ReadyResponse>, StatusCode> {
+pub async fn ready_check(State(state): State<AppState>) -> Result<Json<ReadyResponse>, StatusCode> {
     // Check Redis connectivity
     let redis_ok = check_redis(&state).await;
 
@@ -62,11 +56,9 @@ pub struct MetricsResponse {
 }
 
 /// Metrics endpoint (for monitoring)
-pub async fn metrics(
-    State(state): State<AppState>,
-) -> Json<MetricsResponse> {
+pub async fn metrics(State(state): State<AppState>) -> Json<MetricsResponse> {
     let level = state.get_threat_level().await;
-    
+
     Json(MetricsResponse {
         node_id: state.node_id.clone(),
         threat_level: level.value(),

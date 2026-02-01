@@ -4,7 +4,7 @@
 //! The text shows random characters that the user must type.
 
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use cerberus_common::{CaptchaChallenge, CaptchaDifficulty};
 use rand::Rng;
 use redis::AsyncCommands;
@@ -169,7 +169,9 @@ impl CaptchaGenerator {
     fn get_instructions(&self, difficulty: CaptchaDifficulty) -> String {
         match difficulty {
             CaptchaDifficulty::Easy => "Type the characters shown above".to_string(),
-            CaptchaDifficulty::Medium => "Type the characters shown above (case insensitive)".to_string(),
+            CaptchaDifficulty::Medium => {
+                "Type the characters shown above (case insensitive)".to_string()
+            }
             CaptchaDifficulty::Hard => "Type the characters exactly as shown".to_string(),
             CaptchaDifficulty::Extreme => "Type the characters within 20 seconds".to_string(),
         }

@@ -105,10 +105,11 @@ impl CaptchaDifficulty {
 }
 
 /// Circuit state in the system
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CircuitStatus {
     /// New circuit, never seen before
+    #[default]
     New,
     /// Passed CAPTCHA, has valid passport
     Verified,
@@ -118,12 +119,6 @@ pub enum CircuitStatus {
     Banned,
     /// VIP status (verified + good behavior)
     Vip,
-}
-
-impl Default for CircuitStatus {
-    fn default() -> Self {
-        Self::New
-    }
 }
 
 /// Represents a Tor circuit's identity and state
@@ -184,7 +179,10 @@ impl CircuitInfo {
 
     /// Check if this circuit should be rate-limited
     pub fn should_rate_limit(&self) -> bool {
-        matches!(self.status, CircuitStatus::SoftLocked | CircuitStatus::Banned)
+        matches!(
+            self.status,
+            CircuitStatus::SoftLocked | CircuitStatus::Banned
+        )
     }
 }
 

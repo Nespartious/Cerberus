@@ -1,12 +1,11 @@
 //! HTTP route handlers for Fortify.
 
 use axum::{
-    Router,
-    routing::{get, post},
+    Json, Router,
     extract::State,
     http::StatusCode,
-    Json,
     response::{Html, IntoResponse, Response},
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,29 +21,22 @@ pub fn create_router(state: AppState) -> Router {
         // Static pages (serve CAPTCHA gate)
         .route("/", get(serve_captcha_page))
         .route("/captcha.html", get(serve_captcha_page))
-
         // Health & Status
         .route("/health", get(health::health_check))
         .route("/ready", get(health::ready_check))
         .route("/metrics", get(health::metrics))
-
         // CAPTCHA endpoints
         .route("/challenge", get(captcha::get_challenge))
         .route("/verify", post(captcha::verify_challenge))
-
         // Passport validation (for HAProxy/Nginx)
         .route("/validate", get(passport::validate_passport))
-
         // Protected backend (mock for testing)
         .route("/app/", get(protected_app))
         .route("/app/{*path}", get(protected_app))
-
         // Circuit info (for debugging/admin)
         .route("/circuit/{circuit_id}", get(get_circuit_info))
-
         // Admin endpoints (protected by randomized path in production)
         .nest("/admin", admin_routes())
-
         // Add shared state
         .with_state(state)
 }
@@ -52,8 +44,14 @@ pub fn create_router(state: AppState) -> Router {
 /// Admin routes (threat dial, circuit management, etc.)
 fn admin_routes() -> Router<AppState> {
     Router::new()
-        .route("/threat-level", get(get_threat_level).post(set_threat_level))
-        .route("/circuits/{circuit_id}", get(get_circuit_info).delete(ban_circuit))
+        .route(
+            "/threat-level",
+            get(get_threat_level).post(set_threat_level),
+        )
+        .route(
+            "/circuits/{circuit_id}",
+            get(get_circuit_info).delete(ban_circuit),
+        )
         .route("/stats", get(get_stats))
 }
 
@@ -81,7 +79,11 @@ async fn ban_circuit(
 ) -> StatusCode {
     let mut redis = state.redis.clone();
 
-    match state.circuit_tracker.ban(&mut redis, &circuit_id, "Admin ban").await {
+    match state
+        .circuit_tracker
+        .ban(&mut redis, &circuit_id, "Admin ban")
+        .await
+    {
         Ok(()) => {
             tracing::info!(circuit_id = %circuit_id, "Circuit banned by admin");
             StatusCode::OK
@@ -102,9 +104,7 @@ struct ThreatLevelResponse {
     captcha_count: u8,
 }
 
-async fn get_threat_level(
-    State(state): State<AppState>,
-) -> Json<ThreatLevelResponse> {
+async fn get_threat_level(State(state): State<AppState>) -> Json<ThreatLevelResponse> {
     let level = state.get_threat_level().await;
     Json(ThreatLevelResponse {
         level: level.value(),
@@ -143,9 +143,7 @@ struct StatsResponse {
     version: &'static str,
 }
 
-async fn get_stats(
-    State(state): State<AppState>,
-) -> Json<StatsResponse> {
+async fn get_stats(State(state): State<AppState>) -> Json<StatsResponse> {
     let level = state.get_threat_level().await;
     Json(StatsResponse {
         node_id: state.node_id.clone(),
@@ -172,11 +170,15 @@ async fn protected_app(
 ) -> Response {
     // Check for passport token
     let token = params.get("passport_token");
-    
+
     match token {
         Some(t) => {
             let mut redis = state.redis.clone();
-            match state.captcha_verifier.validate_passport(&mut redis, t).await {
+            match state
+                .captcha_verifier
+                .validate_passport(&mut redis, t)
+                .await
+            {
                 Ok(true) => {
                     // Valid passport - show protected content
                     Html(format!(r##"<!DOCTYPE html>

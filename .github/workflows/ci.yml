@@ -1,0 +1,180 @@
+# Cerberus CI - Code Quality & Build Verification
+# 
+# MANUAL TRIGGER ONLY - Conserves GitHub Actions minutes
+# Trigger via: Actions tab → "Cerberus CI" → "Run workflow"
+#
+# Checks performed:
+# 1. Build verification (debug + release)
+# 2. Clippy lints (catches common bugs, AI hallucinations)
+# 3. Rustfmt (code style consistency)
+# 4. Dependency audit (security vulnerabilities)
+# 5. Dead code detection
+# 6. Documentation build
+
+name: Cerberus CI
+
+on:
+  # Manual trigger only - click "Run workflow" in Actions tab
+  workflow_dispatch:
+    inputs:
+      run_full_audit:
+        description: 'Run full security audit (slower)'
+        required: false
+        default: false
+        type: boolean
+      check_docs:
+        description: 'Build documentation'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"  # Treat warnings as errors
+
+jobs:
+  # ============================================================
+  # Quick Checks - Fast feedback (< 2 min)
+  # ============================================================
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (AI hallucination detection)
+        run: |
+          cargo clippy --all-targets --all-features -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::todo \
+            -D clippy::unimplemented \
+            -D clippy::unreachable \
+            -W clippy::pedantic \
+            -A clippy::module_name_repetitions \
+            -A clippy::must_use_candidate
+
+  # ============================================================
+  # Build Verification
+  # ============================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: quick-checks
+    strategy:
+      matrix:
+        profile: [dev, release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build (${{ matrix.profile }})
+        run: |
+          if [ "${{ matrix.profile }}" = "release" ]; then
+            cargo build --release --all-targets
+          else
+            cargo build --all-targets
+          fi
+
+      - name: Check for unused dependencies
+        run: |
+          cargo install cargo-machete --locked || true
+          cargo machete || echo "::warning::Some dependencies may be unused"
+
+  # ============================================================
+  # Security Audit (Optional - slower)
+  # ============================================================
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_full_audit == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run security audit
+        run: cargo audit
+
+      - name: Check for outdated dependencies
+        run: |
+          cargo install cargo-outdated --locked || true
+          cargo outdated --root-deps-only
+
+  # ============================================================
+  # Documentation (Optional)
+  # ============================================================
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.check_docs == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Build documentation
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # ============================================================
+  # Summary Report
+  # ============================================================
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [quick-checks, build]
+    if: always()
+    steps:
+      - name: Report Status
+        run: |
+          echo "## Cerberus CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Quick Checks | ${{ needs.quick-checks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run triggered manually at $(date -u)" >> $GITHUB_STEP_SUMMARY

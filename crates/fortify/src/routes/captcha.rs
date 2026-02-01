@@ -1,14 +1,14 @@
 //! CAPTCHA generation and verification endpoints.
 
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
-use cerberus_common::CaptchaResult;
 use crate::state::AppState;
+use cerberus_common::CaptchaResult;
 
 #[derive(Deserialize)]
 pub struct ChallengeQuery {
@@ -113,8 +113,8 @@ pub async fn verify_challenge(
     if let Some(ref circuit_id) = payload.circuit_id {
         if result.success {
             if let Some(ref token) = result.passport_token {
-                let expires = chrono::Utc::now().timestamp()
-                    + state.config.captcha.passport_ttl_secs as i64;
+                let expires =
+                    chrono::Utc::now().timestamp() + state.config.captcha.passport_ttl_secs as i64;
                 let _ = state
                     .circuit_tracker
                     .record_success(&mut redis, circuit_id, token, expires)

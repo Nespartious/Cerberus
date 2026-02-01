@@ -187,9 +187,10 @@ impl CircuitTracker {
         match info {
             Some(info) => match info.status {
                 CircuitStatus::Banned => Ok((false, Some("Circuit is banned".to_string()))),
-                CircuitStatus::SoftLocked => {
-                    Ok((false, Some("Too many failed attempts. Try again later.".to_string())))
-                }
+                CircuitStatus::SoftLocked => Ok((
+                    false,
+                    Some("Too many failed attempts. Try again later.".to_string()),
+                )),
                 _ => Ok((true, None)),
             },
             None => Ok((true, None)), // New circuits are allowed

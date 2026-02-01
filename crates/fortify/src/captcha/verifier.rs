@@ -59,17 +59,16 @@ impl CaptchaVerifier {
             });
         }
 
-        // Verify circuit ID matches (if provided)
-        if let (Some(stored_cid), Some(request_cid)) = (&challenge.circuit_id, circuit_id) {
-            if stored_cid != request_cid {
-                tracing::warn!(
-                    challenge_id = %challenge_id,
-                    stored_circuit = %stored_cid,
-                    request_circuit = %request_cid,
-                    "Circuit ID mismatch"
-                );
-                // Don't fail - circuits can change, just log it
-            }
+        // Verify circuit ID matches (if provided) - warn on mismatch but don't fail
+        if let (Some(stored_cid), Some(request_cid)) = (&challenge.circuit_id, circuit_id)
+            && stored_cid != request_cid
+        {
+            tracing::warn!(
+                challenge_id = %challenge_id,
+                stored_circuit = %stored_cid,
+                request_circuit = %request_cid,
+                "Circuit ID mismatch - circuits can change, continuing"
+            );
         }
 
         // Compare answers (case-insensitive for Easy/Medium)
@@ -77,9 +76,7 @@ impl CaptchaVerifier {
             CaptchaDifficulty::Easy | CaptchaDifficulty::Medium => {
                 user_answer.to_uppercase() == challenge.answer.to_uppercase()
             }
-            CaptchaDifficulty::Hard | CaptchaDifficulty::Extreme => {
-                user_answer == challenge.answer
-            }
+            CaptchaDifficulty::Hard | CaptchaDifficulty::Extreme => user_answer == challenge.answer,
         };
 
         if success {
@@ -128,8 +125,8 @@ impl CaptchaVerifier {
 
     /// Generate a cryptographically secure passport token
     fn generate_passport_token(&self) -> String {
-        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
         use base64::Engine;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
         let mut bytes = [0u8; 32];
         rand::Rng::fill(&mut rand::rng(), &mut bytes);

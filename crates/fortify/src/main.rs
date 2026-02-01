@@ -13,7 +13,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::info;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 mod captcha;
 mod circuits;
@@ -58,7 +58,10 @@ async fn main() -> Result<()> {
     // Initialize logging
     init_logging(&args.log_level, args.json_logs)?;
 
-    info!("🔥 Starting Cerberus Fortify v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "🔥 Starting Cerberus Fortify v{}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Load configuration
     let config = AppConfig::load(&args.config, &args)?;
@@ -75,17 +78,14 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
     info!("🚀 Fortify listening on {}", config.listen_addr);
 
-    axum::serve(listener, app)
-        .await
-        .context("Server error")?;
+    axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())
 }
 
 /// Initialize structured logging with tracing
 fn init_logging(level: &str, json: bool) -> Result<()> {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
 
     if json {
         tracing_subscriber::registry()

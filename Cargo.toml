@@ -33,7 +33,7 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-# Redis
+# Redis (1.x has breaking changes - using stable 0.27 for now)
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 
 # CLI
@@ -46,7 +46,7 @@ base64 = "0.22"
 
 # Image Generation (CAPTCHA)
 image = "0.25"
-imageproc = "0.25"
+imageproc = "0.26"
 rusttype = "0.9"
 
 # Time

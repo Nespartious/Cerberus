@@ -34,7 +34,11 @@ pub async fn validate_passport(
 
     // Check if circuit is allowed (if provided)
     if let Some(ref circuit_id) = params.circuit_id {
-        match state.circuit_tracker.is_allowed(&mut redis, circuit_id).await {
+        match state
+            .circuit_tracker
+            .is_allowed(&mut redis, circuit_id)
+            .await
+        {
             Ok((false, _)) => return StatusCode::FORBIDDEN,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to check circuit status");

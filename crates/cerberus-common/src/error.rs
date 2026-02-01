@@ -70,9 +70,6 @@ impl CerberusError {
 
     /// Returns true if this error should be retried
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            Self::Redis(_) | Self::Cluster(_) | Self::Timeout(_)
-        )
+        matches!(self, Self::Redis(_) | Self::Cluster(_) | Self::Timeout(_))
     }
 }

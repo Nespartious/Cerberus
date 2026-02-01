@@ -21,8 +21,9 @@ pub struct AppConfig {
     #[serde(default = "default_threat_level")]
     pub initial_threat_level: u8,
 
-    /// Enable cluster mode
+    /// Enable cluster mode (reserved for future use)
     #[serde(default)]
+    #[allow(dead_code)]
     pub cluster_enabled: bool,
 
     /// This node's unique ID (auto-generated if not set)
@@ -41,8 +42,9 @@ pub struct AppConfig {
 /// CAPTCHA-specific configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct CaptchaConfig {
-    /// Path to font file for CAPTCHA text
+    /// Path to font file for CAPTCHA text (reserved for image-based CAPTCHA)
     #[serde(default = "default_font_path")]
+    #[allow(dead_code)]
     pub font_path: String,
 
     /// Passport token validity in seconds
@@ -96,16 +98,36 @@ impl Default for RateLimitConfig {
 }
 
 // Default value functions
-fn default_redis_url() -> String { DEFAULT_REDIS_URL.to_string() }
-fn default_listen_addr() -> String { DEFAULT_LISTEN_ADDR.to_string() }
-fn default_threat_level() -> u8 { 5 }
-fn default_font_path() -> String { "assets/fonts/DejaVuSans.ttf".to_string() }
-fn default_passport_ttl() -> u64 { 600 } // 10 minutes
-fn default_challenge_ttl() -> u64 { 300 } // 5 minutes
-fn default_max_requests() -> u32 { 60 }
-fn default_max_failures() -> u32 { 5 }
-fn default_soft_lock() -> u64 { 1800 } // 30 minutes
-fn default_ban_duration() -> u64 { 3600 } // 1 hour
+fn default_redis_url() -> String {
+    DEFAULT_REDIS_URL.to_string()
+}
+fn default_listen_addr() -> String {
+    DEFAULT_LISTEN_ADDR.to_string()
+}
+fn default_threat_level() -> u8 {
+    5
+}
+fn default_font_path() -> String {
+    "assets/fonts/DejaVuSans.ttf".to_string()
+}
+fn default_passport_ttl() -> u64 {
+    600
+} // 10 minutes
+fn default_challenge_ttl() -> u64 {
+    300
+} // 5 minutes
+fn default_max_requests() -> u32 {
+    60
+}
+fn default_max_failures() -> u32 {
+    5
+}
+fn default_soft_lock() -> u64 {
+    1800
+} // 30 minutes
+fn default_ban_duration() -> u64 {
+    3600
+} // 1 hour
 
 fn generate_node_id() -> String {
     use rand::Rng;

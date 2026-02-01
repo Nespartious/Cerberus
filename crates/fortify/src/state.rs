@@ -5,10 +5,10 @@ use redis::aio::ConnectionManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use cerberus_common::ThreatLevel;
 use crate::captcha::{CaptchaGenerator, CaptchaVerifier};
 use crate::circuits::CircuitTracker;
 use crate::config::AppConfig;
+use cerberus_common::ThreatLevel;
 
 /// Shared application state
 #[derive(Clone)]
@@ -84,12 +84,13 @@ impl AppState {
 
         // Sync to Redis for cluster visibility
         let mut conn = self.redis.clone();
-        let _: () = conn.set(
-            cerberus_common::constants::redis_keys::THREAT_LEVEL,
-            level.value(),
-        )
-        .await
-        .context("Failed to sync threat level to Redis")?;
+        let _: () = conn
+            .set(
+                cerberus_common::constants::redis_keys::THREAT_LEVEL,
+                level.value(),
+            )
+            .await
+            .context("Failed to sync threat level to Redis")?;
 
         tracing::info!(level = level.value(), "Threat level updated");
 
