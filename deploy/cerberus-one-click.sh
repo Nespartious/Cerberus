@@ -452,7 +452,12 @@ EOF
     fi
     
     log_info "  [VERBOSE] Verifying torrc syntax..."
-    if ! tor --verify-config -f /etc/tor/torrc 2>&1; then
+    # NOTE: We must verify config as debian-tor user because:
+    # 1. Tor refuses to run as root with HiddenServiceDir owned by another user
+    # 2. The HS directory is owned by debian-tor (required by Tor)
+    # 3. Running tor --verify-config as root will FAIL with permission errors
+    log_info "  [VERBOSE] Running config verification as debian-tor user..."
+    if ! sudo -u debian-tor tor --verify-config -f /etc/tor/torrc 2>&1; then
         log_error "Tor configuration verification FAILED!"
         log_error "This usually means a syntax error in /etc/tor/torrc"
         cat /etc/tor/torrc
