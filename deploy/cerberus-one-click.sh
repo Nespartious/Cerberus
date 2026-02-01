@@ -27,7 +27,7 @@ VANITY_PREFIX="sigil"
 FORTIFY_PORT="8888"
 
 # GitHub Repository (public, no auth needed)
-GITHUB_REPO="https://github.com/YOUR_USER/Cerberus.git"
+GITHUB_REPO="https://github.com/Nespartious/Cerberus.git"
 
 # =============================================================================
 # PATHS

@@ -13,7 +13,7 @@ Deploy a complete Cerberus defense system on a fresh Ubuntu server in under 10 m
 sudo apt update && sudo apt install -y git
 
 # 2. Clone the repository (public, no auth needed)
-git clone https://github.com/YOUR_USER/Cerberus.git
+git clone https://github.com/Nespartious/Cerberus.git
 
 # 3. Run deployment
 cd Cerberus
@@ -23,7 +23,7 @@ sudo bash deploy/cerberus-one-click.sh
 ### Option 2: One-Liner (After Pushing to GitHub)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USER/Cerberus/main/deploy/cerberus-one-click.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Nespartious/Cerberus/main/deploy/cerberus-one-click.sh | sudo bash
 ```
 
 ---
